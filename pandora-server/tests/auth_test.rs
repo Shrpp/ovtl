@@ -127,4 +127,84 @@ async fn test_register_and_login() {
     println!("✓ Register, login, JWT round-trip OK");
     println!("  Tenant ID : {tenant_id}");
     println!("  User   ID : {}", user.id);
+    println!("  Token     : {}...{}", &token[..20], &token[token.len()-10..]);
+}
+
+#[tokio::test]
+async fn test_me_endpoint_logic() {
+    let (db, cfg, tenant_id) = setup().await;
+
+    let tenant = tenants::Entity::find_by_id(tenant_id)
+        .one(&db)
+        .await
+        .expect("find")
+        .expect("tenant exists");
+
+    let tenant_key = hefesto::decrypt(
+        &tenant.encryption_key,
+        &cfg.master_encryption_key,
+        &cfg.master_encryption_key,
+    )
+    .expect("decrypt tenant key");
+
+    let email = "me_test@pandora.dev";
+    let password = "Secret5678!";
+
+    // Cleanup
+    let _ = db
+        .execute_unprepared(&format!("SET app.tenant_id = '{tenant_id}'"))
+        .await;
+    let _ = db
+        .execute_unprepared(&format!(
+            "DELETE FROM users WHERE tenant_id = '{tenant_id}' AND email_lookup = '{}'",
+            hefesto::hash_for_lookup(email, &tenant_key)
+        ))
+        .await;
+
+    // Register
+    let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
+    let user = pandora_server::services::user_service::create(
+        &txn,
+        pandora_server::services::user_service::CreateUserInput {
+            tenant_id,
+            email_encrypted: hefesto::encrypt(email, &tenant_key, &cfg.master_encryption_key)
+                .unwrap(),
+            email_lookup: hefesto::hash_for_lookup(email, &tenant_key),
+            password_hash: hefesto::hash_password(password).unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+    txn.commit().await.unwrap();
+
+    // Generate token
+    let token = token_service::generate_access_token(
+        user.id,
+        tenant_id,
+        email,
+        &cfg.jwt_secret,
+        cfg.jwt_expiration_minutes,
+    )
+    .unwrap();
+
+    // Validate token and verify AuthUser fields
+    let claims = token_service::validate_access_token(&token, &cfg.jwt_secret).unwrap();
+    assert_eq!(claims.sub, user.id.to_string());
+    assert_eq!(claims.tid, tenant_id.to_string());
+    assert_eq!(claims.email, email);
+
+    // Simulate what /users/me does: fetch user + decrypt email
+    let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
+    let fetched = pandora_server::entity::users::Entity::find_by_id(user.id)
+        .one(&txn)
+        .await
+        .unwrap()
+        .expect("user found");
+    txn.commit().await.unwrap();
+
+    let decrypted_email =
+        hefesto::decrypt(&fetched.email, &tenant_key, &cfg.master_encryption_key).unwrap();
+    assert_eq!(decrypted_email, email);
+
+    println!("✓ /users/me logic OK — decrypt email roundtrip verified");
 }
