@@ -1,19 +1,14 @@
 use axum::{routing::get, Json, Router};
+use pandora_server::{
+    config, db,
+    middleware::tenant::tenant_middleware,
+    routes,
+    state::AppState,
+};
 use serde_json::json;
 use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-
-mod config;
-mod db;
-mod entity;
-mod error;
-mod middleware;
-mod services;
-mod state;
-
-use crate::middleware::tenant::tenant_middleware;
-use state::AppState;
 
 #[tokio::main]
 async fn main() {
@@ -46,11 +41,9 @@ async fn main() {
 }
 
 fn build_router(state: AppState) -> Router {
-    // Public — no tenant required
     let public = Router::new().route("/health", get(health));
 
-    // Protected — tenant middleware applied; auth routes added in Phase 5
-    let protected = Router::new().layer(axum::middleware::from_fn_with_state(
+    let protected = routes::auth::router().layer(axum::middleware::from_fn_with_state(
         state.clone(),
         tenant_middleware,
     ));

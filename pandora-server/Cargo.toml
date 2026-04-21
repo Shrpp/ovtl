@@ -3,6 +3,14 @@ name    = "pandora-server"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "pandora_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pandora-server"
+path = "src/main.rs"
+
 [dependencies]
 # Web
 axum               = "0.7"
