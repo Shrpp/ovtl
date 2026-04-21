@@ -1,4 +1,9 @@
-use pandora_server::{config::Config, db, entity::tenants, services::token_service};
+use pandora_server::{
+    config::Config,
+    db,
+    entity::tenants,
+    services::{token_service, user_service},
+};
 use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Set};
 use uuid::Uuid;
 
@@ -207,4 +212,137 @@ async fn test_me_endpoint_logic() {
     assert_eq!(decrypted_email, email);
 
     println!("✓ /users/me logic OK — decrypt email roundtrip verified");
+}
+
+async fn create_test_user(
+    db: &sea_orm::DatabaseConnection,
+    cfg: &Config,
+    tenant_id: Uuid,
+    tenant_key: &str,
+    email: &str,
+    password: &str,
+) -> pandora_server::entity::users::Model {
+    // cleanup
+    let _ = db
+        .execute_unprepared(&format!("SET app.tenant_id = '{tenant_id}'"))
+        .await;
+    let _ = db
+        .execute_unprepared(&format!(
+            "DELETE FROM users WHERE tenant_id = '{tenant_id}' AND email_lookup = '{}'",
+            hefesto::hash_for_lookup(email, tenant_key)
+        ))
+        .await;
+
+    let txn = db::begin_tenant_txn(db, tenant_id).await.unwrap();
+    let user = user_service::create(
+        &txn,
+        user_service::CreateUserInput {
+            tenant_id,
+            email_encrypted: hefesto::encrypt(email, tenant_key, &cfg.master_encryption_key)
+                .unwrap(),
+            email_lookup: hefesto::hash_for_lookup(email, tenant_key),
+            password_hash: hefesto::hash_password(password).unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+    txn.commit().await.unwrap();
+    user
+}
+
+#[tokio::test]
+async fn test_refresh_token_rotation() {
+    let (db, cfg, tenant_id) = setup().await;
+    let tenant = tenants::Entity::find_by_id(tenant_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    let tenant_key = hefesto::decrypt(
+        &tenant.encryption_key,
+        &cfg.master_encryption_key,
+        &cfg.master_encryption_key,
+    )
+    .unwrap();
+
+    let user =
+        create_test_user(&db, &cfg, tenant_id, &tenant_key, "refresh@pandora.dev", "Pass1234!").await;
+
+    // Store a refresh token
+    let rt1 = token_service::generate_refresh_token();
+    let hash1 = token_service::hash_refresh_token(&rt1);
+    let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
+    token_service::store_refresh_token(&txn, tenant_id, user.id, hash1.clone(), 30)
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+
+    // Use it — should find and rotate
+    let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
+    let record = token_service::find_valid_refresh_token(&txn, &hash1)
+        .await
+        .unwrap()
+        .expect("token found");
+    token_service::revoke_token(&txn, record).await.unwrap();
+
+    // Second lookup must fail (already revoked)
+    let second = token_service::find_valid_refresh_token(&txn, &hash1)
+        .await
+        .unwrap();
+    assert!(second.is_none(), "rotated token must not be reusable");
+    txn.commit().await.unwrap();
+
+    println!("✓ Refresh token rotation OK");
+}
+
+#[tokio::test]
+async fn test_revoke_all_tokens() {
+    let (db, cfg, tenant_id) = setup().await;
+    let tenant = tenants::Entity::find_by_id(tenant_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    let tenant_key = hefesto::decrypt(
+        &tenant.encryption_key,
+        &cfg.master_encryption_key,
+        &cfg.master_encryption_key,
+    )
+    .unwrap();
+
+    let user = create_test_user(
+        &db, &cfg, tenant_id, &tenant_key, "revoke@pandora.dev", "Pass1234!",
+    )
+    .await;
+
+    // Store 3 tokens
+    let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
+    for _ in 0..3 {
+        let rt = token_service::generate_refresh_token();
+        let hash = token_service::hash_refresh_token(&rt);
+        token_service::store_refresh_token(&txn, tenant_id, user.id, hash, 30)
+            .await
+            .unwrap();
+    }
+    txn.commit().await.unwrap();
+
+    // Revoke all
+    let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
+    token_service::revoke_all_user_tokens(&txn, user.id)
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+
+    // Verify all are revoked
+    use pandora_server::entity::refresh_tokens;
+    use sea_orm::{ColumnTrait, QueryFilter};
+    let active: Vec<refresh_tokens::Model> = refresh_tokens::Entity::find()
+        .filter(refresh_tokens::Column::UserId.eq(user.id))
+        .filter(refresh_tokens::Column::RevokedAt.is_null())
+        .all(&db)
+        .await
+        .unwrap();
+    assert!(active.is_empty(), "all tokens must be revoked");
+
+    println!("✓ Revoke all tokens OK");
 }
