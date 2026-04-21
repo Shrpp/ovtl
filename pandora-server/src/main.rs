@@ -3,6 +3,7 @@ use pandora_server::{
     config, db,
     middleware::{auth::auth_middleware, tenant::tenant_middleware},
     routes,
+    services::token_service,
     state::AppState,
 };
 use serde_json::json;
@@ -26,7 +27,18 @@ async fn main() {
         std::process::exit(1);
     });
 
-    let state = AppState::new(db, config.clone());
+    let state = AppState::new(db.clone(), config.clone());
+
+    // Background task: purge expired refresh tokens every 6 hours
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+            match token_service::cleanup_expired_tokens(&db).await {
+                Ok(n) => tracing::info!("cleanup: removed {n} expired refresh tokens"),
+                Err(e) => tracing::error!("cleanup error: {e}"),
+            }
+        }
+    });
 
     let app = build_router(state);
 
@@ -43,14 +55,14 @@ async fn main() {
 fn build_router(state: AppState) -> Router {
     let public = Router::new().route("/health", get(health));
 
-    // /auth/* — tenant context only (no JWT yet)
-    let auth_routes = routes::auth::router().layer(axum::middleware::from_fn_with_state(
-        state.clone(),
-        tenant_middleware,
-    ));
+    // /auth/register, /auth/login, /auth/refresh — tenant only
+    let auth_public = routes::auth::public_router().layer(
+        axum::middleware::from_fn_with_state(state.clone(), tenant_middleware),
+    );
 
-    // /users/* — tenant context + JWT auth (tenant runs first, outermost layer)
-    let user_routes = routes::user::router()
+    // /auth/logout, /auth/revoke + /users/me — tenant + JWT
+    let auth_protected = routes::auth::protected_router()
+        .merge(routes::user::router())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -62,8 +74,8 @@ fn build_router(state: AppState) -> Router {
 
     Router::new()
         .merge(public)
-        .merge(auth_routes)
-        .merge(user_routes)
+        .merge(auth_public)
+        .merge(auth_protected)
         .with_state(state)
 }
 

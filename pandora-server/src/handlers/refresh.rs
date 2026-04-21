@@ -1,37 +1,41 @@
 use axum::{extract::State, response::IntoResponse, Extension, Json};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
     db,
+    entity::users,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::{token_service, user_service},
+    services::token_service,
     state::AppState,
 };
+use sea_orm::EntityTrait;
 
 #[derive(Debug, Deserialize)]
-pub struct LoginRequest {
-    pub email: String,
-    pub password: String,
-}
-
-#[derive(Debug, Serialize, Clone)]
-pub struct TokenResponse {
-    pub access_token: String,
+pub struct RefreshRequest {
     pub refresh_token: String,
-    pub expires_in: i64,
 }
 
-pub async fn login(
+pub async fn refresh(
     State(state): State<AppState>,
     Extension(ctx): Extension<TenantContext>,
-    Json(payload): Json<LoginRequest>,
+    Json(payload): Json<RefreshRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let email_lookup = hefesto::hash_for_lookup(&payload.email, &ctx.tenant_key);
+    let token_hash = token_service::hash_refresh_token(&payload.refresh_token);
 
     let txn = db::begin_tenant_txn(&state.db, ctx.tenant_id).await?;
 
-    let user = user_service::find_by_email_lookup(&txn, &email_lookup)
+    let record = token_service::find_valid_refresh_token(&txn, &token_hash)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+
+    let user_id = record.user_id;
+
+    // Rotation: revoke old token before issuing new one
+    token_service::revoke_token(&txn, record).await?;
+
+    let user = users::Entity::find_by_id(user_id)
+        .one(&txn)
         .await?
         .ok_or(AppError::Unauthorized)?;
 
@@ -39,11 +43,7 @@ pub async fn login(
         return Err(AppError::Unauthorized);
     }
 
-    if !hefesto::verify_password(&payload.password, &user.password_hash) {
-        return Err(AppError::Unauthorized);
-    }
-
-    let email_plain = hefesto::decrypt(
+    let email = hefesto::decrypt(
         &user.email,
         &ctx.tenant_key,
         &state.config.master_encryption_key,
@@ -52,28 +52,28 @@ pub async fn login(
     let access_token = token_service::generate_access_token(
         user.id,
         ctx.tenant_id,
-        &email_plain,
+        &email,
         &state.config.jwt_secret,
         state.config.jwt_expiration_minutes,
     )?;
 
-    let refresh_token = token_service::generate_refresh_token();
-    let token_hash = token_service::hash_refresh_token(&refresh_token);
+    let new_refresh_token = token_service::generate_refresh_token();
+    let new_hash = token_service::hash_refresh_token(&new_refresh_token);
 
     token_service::store_refresh_token(
         &txn,
         ctx.tenant_id,
         user.id,
-        token_hash,
+        new_hash,
         state.config.refresh_token_expiration_days,
     )
     .await?;
 
     txn.commit().await?;
 
-    Ok(Json(TokenResponse {
+    Ok(Json(super::login::TokenResponse {
         access_token,
-        refresh_token,
+        refresh_token: new_refresh_token,
         expires_in: state.config.jwt_expiration_minutes * 60,
     }))
 }
