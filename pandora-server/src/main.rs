@@ -1,7 +1,7 @@
 use axum::{routing::get, Json, Router};
 use pandora_server::{
     config, db,
-    middleware::tenant::tenant_middleware,
+    middleware::{auth::auth_middleware, tenant::tenant_middleware},
     routes,
     state::AppState,
 };
@@ -43,14 +43,27 @@ async fn main() {
 fn build_router(state: AppState) -> Router {
     let public = Router::new().route("/health", get(health));
 
-    let protected = routes::auth::router().layer(axum::middleware::from_fn_with_state(
+    // /auth/* — tenant context only (no JWT yet)
+    let auth_routes = routes::auth::router().layer(axum::middleware::from_fn_with_state(
         state.clone(),
         tenant_middleware,
     ));
 
+    // /users/* — tenant context + JWT auth (tenant runs first, outermost layer)
+    let user_routes = routes::user::router()
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            tenant_middleware,
+        ));
+
     Router::new()
         .merge(public)
-        .merge(protected)
+        .merge(auth_routes)
+        .merge(user_routes)
         .with_state(state)
 }
 
