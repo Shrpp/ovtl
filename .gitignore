@@ -25,7 +25,5 @@ target
 
 /target
 
-# LLM configs
+# LLM models
 /.claude
-
-.env
