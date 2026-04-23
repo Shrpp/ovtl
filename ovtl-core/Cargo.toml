@@ -1,6 +1,6 @@
 [package]
 name    = "ovtl-core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
@@ -12,6 +12,9 @@ name = "ovtl-core"
 path = "src/main.rs"
 
 [dependencies]
+# Migrations (run via --migrate flag at startup)
+migration = { path = "migration" }
+
 # Web
 axum               = "0.7"
 tokio              = { version = "1", features = ["full"] }
