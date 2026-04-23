@@ -27,3 +27,6 @@ target
 
 # LLM configs
 /.claude
+
+# Environment variables
+.env
