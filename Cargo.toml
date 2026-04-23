@@ -1,6 +1,5 @@
-[package]
-name = "pandora"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
+[workspace]
+members = [
+    "pandora-server",
+]
+resolver = "2"
