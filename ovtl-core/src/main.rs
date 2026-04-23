@@ -8,7 +8,7 @@ use ovtl_core::{
         tenant::tenant_middleware,
     },
     routes,
-    services::token_service,
+    services::{lockout_service, token_service},
     state::AppState,
 };
 use serde_json::json;
@@ -35,13 +35,17 @@ async fn main() {
 
     let state = AppState::new(db.clone(), config.clone());
 
-    // Background task: purge expired refresh tokens every 6 hours
+    // Background cleanup every 6 hours
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
             match token_service::cleanup_expired_tokens(&db).await {
                 Ok(n) => tracing::info!("cleanup: removed {n} expired refresh tokens"),
                 Err(e) => tracing::error!("cleanup error: {e}"),
+            }
+            match lockout_service::cleanup_old_attempts(&db).await {
+                Ok(n) => tracing::info!("cleanup: removed {n} stale login attempts"),
+                Err(e) => tracing::error!("lockout cleanup error: {e}"),
             }
         }
     });
@@ -68,7 +72,6 @@ fn build_router(state: AppState) -> Router {
 
     let public = Router::new().route("/health", get(health));
 
-    // /auth/register, /auth/login, /auth/refresh — tenant + rate limit
     let auth_public = routes::auth::public_router()
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -79,7 +82,6 @@ fn build_router(state: AppState) -> Router {
             tenant_middleware,
         ));
 
-    // /auth/logout, /auth/revoke + /users/me — tenant + JWT
     let auth_protected = routes::auth::protected_router()
         .merge(routes::user::router())
         .layer(axum::middleware::from_fn_with_state(
@@ -91,7 +93,6 @@ fn build_router(state: AppState) -> Router {
             tenant_middleware,
         ));
 
-    // OAuth callbacks — no tenant middleware (tenant_id comes from state param)
     let oauth_callbacks = routes::auth::callback_router();
 
     Router::new()
@@ -99,7 +100,10 @@ fn build_router(state: AppState) -> Router {
         .merge(auth_public)
         .merge(auth_protected)
         .merge(oauth_callbacks)
-        .layer(axum::middleware::from_fn(security_headers_middleware))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            security_headers_middleware,
+        ))
         .layer(cors)
         .with_state(state)
 }

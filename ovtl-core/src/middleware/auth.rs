@@ -13,17 +13,14 @@ use crate::{
     state::AppState,
 };
 
-/// Authenticated user extracted from a valid JWT.
-/// Available in handlers via `Extension(auth): Extension<AuthUser>`.
 #[derive(Clone, Debug)]
 pub struct AuthUser {
     pub user_id: Uuid,
     pub tenant_id: Uuid,
     pub email: String,
+    pub jti: String,
 }
 
-/// Axum middleware — validates Bearer token, cross-checks tid against TenantContext.
-/// Must run after tenant_middleware (depends on TenantContext being in extensions).
 pub async fn auth_middleware(
     State(state): State<AppState>,
     mut req: Request,
@@ -43,7 +40,6 @@ pub async fn auth_middleware(
     let token_tenant_id = Uuid::parse_str(&claims.tid)
         .map_err(|_| AppError::TokenError("invalid tid".into()))?;
 
-    // tid in JWT must match the tenant from X-Pandora-Tenant-ID header
     if let Some(ctx) = req.extensions().get::<TenantContext>() {
         if token_tenant_id != ctx.tenant_id {
             return Err(AppError::Unauthorized);
@@ -54,6 +50,7 @@ pub async fn auth_middleware(
         user_id,
         tenant_id: token_tenant_id,
         email: claims.email,
+        jti: claims.jti,
     });
 
     Ok(next.run(req).await)

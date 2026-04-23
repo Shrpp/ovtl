@@ -12,6 +12,8 @@ use crate::{entity::refresh_tokens, error::AppError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
+    /// JWT ID — unique per token, useful for correlation in audit logs.
+    pub jti: String,
     pub sub: String,
     pub tid: String,
     pub email: String,
@@ -28,6 +30,7 @@ pub fn generate_access_token(
 ) -> Result<String, AppError> {
     let now = Utc::now().timestamp();
     let claims = Claims {
+        jti: Uuid::new_v4().to_string(),
         sub: user_id.to_string(),
         tid: tenant_id.to_string(),
         email: email.to_string(),
@@ -80,7 +83,6 @@ pub async fn store_refresh_token(
     Ok(())
 }
 
-/// Find a non-expired, non-revoked refresh token by its hash (within RLS context).
 pub async fn find_valid_refresh_token(
     txn: &DatabaseTransaction,
     token_hash: &str,
@@ -94,7 +96,6 @@ pub async fn find_valid_refresh_token(
         .await?)
 }
 
-/// Mark one token as revoked.
 pub async fn revoke_token(
     txn: &DatabaseTransaction,
     record: refresh_tokens::Model,
@@ -106,7 +107,6 @@ pub async fn revoke_token(
     Ok(())
 }
 
-/// Revoke every active refresh token belonging to a user (within RLS context).
 pub async fn revoke_all_user_tokens(
     txn: &DatabaseTransaction,
     user_id: Uuid,
@@ -119,8 +119,9 @@ pub async fn revoke_all_user_tokens(
     Ok(())
 }
 
-/// Delete expired tokens across all tenants.
-/// Safe to call without RLS context — pandora owns the tables (no FORCE ROW LEVEL SECURITY).
+/// Delete expired refresh tokens across all tenants.
+/// refresh_tokens has no FORCE ROW LEVEL SECURITY, so the table owner can run this
+/// without a tenant transaction context.
 pub async fn cleanup_expired_tokens(db: &DatabaseConnection) -> Result<u64, AppError> {
     let now = Utc::now().fixed_offset();
     let result = refresh_tokens::Entity::delete_many()

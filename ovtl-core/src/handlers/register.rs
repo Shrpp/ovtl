@@ -1,12 +1,13 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension, Json};
+use axum::{extract::{ConnectInfo, State}, http::StatusCode, response::IntoResponse, Extension, Json};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use validator::Validate;
 
 use crate::{
     db,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::user_service,
+    services::{audit_service, user_service},
     state::AppState,
 };
 
@@ -27,6 +28,7 @@ pub struct RegisterResponse {
 
 pub async fn register(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Extension(ctx): Extension<TenantContext>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -34,9 +36,14 @@ pub async fn register(
         .validate()
         .map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
-    let email_lookup = hefesto::hash_for_lookup(&payload.email, &ctx.tenant_key);
+    validate_password_strength(&payload.password)?;
+
+    // Normalize email — prevents duplicate accounts differing only by case.
+    let email_normalized = payload.email.trim().to_lowercase();
+
+    let email_lookup = hefesto::hash_for_lookup(&email_normalized, &ctx.tenant_key);
     let email_encrypted = hefesto::encrypt(
-        &payload.email,
+        &email_normalized,
         &ctx.tenant_key,
         &state.config.master_encryption_key,
     )?;
@@ -61,12 +68,32 @@ pub async fn register(
 
     txn.commit().await?;
 
+    audit_service::record(
+        state.db.clone(),
+        ctx.tenant_id,
+        Some(user.id),
+        "user.registered",
+        Some(addr.ip().to_string()),
+        None,
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {
             id: user.id.to_string(),
-            email: payload.email,
+            email: email_normalized,
             created_at: user.created_at.to_rfc3339(),
         }),
     ))
+}
+
+fn validate_password_strength(password: &str) -> Result<(), AppError> {
+    let has_upper = password.chars().any(|c| c.is_uppercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    if !has_upper || !has_digit {
+        return Err(AppError::InvalidInput(
+            "password must contain at least one uppercase letter and one digit".into(),
+        ));
+    }
+    Ok(())
 }
