@@ -24,3 +24,8 @@ target
 # Added by cargo
 
 /target
+
+# LLM configs
+/.claude
+
+.env
