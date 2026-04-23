@@ -13,9 +13,12 @@ pub struct Model {
     pub client_secret: String,
     #[sea_orm(column_type = "Text")]
     pub name: String,
-    pub redirect_uris: Json,
-    pub grant_types: Json,
-    pub scopes: Json,
+    #[sea_orm(column_type = "Json")]
+    pub redirect_uris: serde_json::Value,
+    #[sea_orm(column_type = "Json")]
+    pub grant_types: serde_json::Value,
+    #[sea_orm(column_type = "Json")]
+    pub scopes: serde_json::Value,
     pub is_confidential: bool,
     pub require_consent: bool,
     pub is_active: bool,
@@ -23,21 +26,6 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::tenants::Entity",
-        from = "Column::TenantId",
-        to = "super::tenants::Column::Id",
-        on_update = "NoAction",
-        on_delete = "Cascade"
-    )]
-    Tenants,
-}
-
-impl Related<super::tenants::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Tenants.def()
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

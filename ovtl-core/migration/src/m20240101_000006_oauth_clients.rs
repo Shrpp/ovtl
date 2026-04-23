@@ -1,7 +1,12 @@
 use sea_orm_migration::prelude::*;
 
-#[derive(DeriveMigrationName)]
 pub struct Migration;
+
+impl MigrationName for Migration {
+    fn name(&self) -> &str {
+        "m20240101_000006_oauth_clients"
+    }
+}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -9,16 +14,15 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(
-                r#"
-                CREATE TABLE IF NOT EXISTS oauth_clients (
+                "CREATE TABLE IF NOT EXISTS oauth_clients (
                     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
                     tenant_id       UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
                     client_id       TEXT        NOT NULL UNIQUE,
                     client_secret   TEXT        NOT NULL,
                     name            TEXT        NOT NULL,
-                    redirect_uris   JSONB       NOT NULL DEFAULT '[]'::jsonb,
-                    grant_types     JSONB       NOT NULL DEFAULT '["authorization_code"]'::jsonb,
-                    scopes          JSONB       NOT NULL DEFAULT '["openid","email","profile"]'::jsonb,
+                    redirect_uris   JSONB       NOT NULL DEFAULT '[]',
+                    grant_types     JSONB       NOT NULL DEFAULT '[\"authorization_code\"]',
+                    scopes          JSONB       NOT NULL DEFAULT '[\"openid\",\"email\",\"profile\"]',
                     is_confidential BOOLEAN     NOT NULL DEFAULT true,
                     require_consent BOOLEAN     NOT NULL DEFAULT false,
                     is_active       BOOLEAN     NOT NULL DEFAULT true,
@@ -28,8 +32,7 @@ impl MigrationTrait for Migration {
                 ALTER TABLE oauth_clients ENABLE ROW LEVEL SECURITY;
                 ALTER TABLE oauth_clients FORCE ROW LEVEL SECURITY;
                 CREATE POLICY tenant_isolation ON oauth_clients
-                    USING (tenant_id = current_setting('app.tenant_id')::UUID);
-                "#,
+                    USING (tenant_id = current_setting('app.tenant_id')::UUID)",
             )
             .await?;
         Ok(())

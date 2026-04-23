@@ -1,13 +1,12 @@
 use axum::{
-    extract::{Query, State},
-    http::HeaderMap,
+    extract::{Form, Query, State},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
-    Form, Json,
+    Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
-use jsonwebtoken::{Algorithm, Header};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -16,18 +15,18 @@ use crate::{
     db,
     entity::authorization_codes,
     error::AppError,
-    services::{client_service, token_service, user_service},
+    services::{client_service, tenant_service, token_service, user_service},
     state::AppState,
 };
 
-// ─── Authorize ───────────────────────────────────────────────────────────────
+// ── /oauth/authorize ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub struct AuthorizeQuery {
+pub struct AuthorizeParams {
     pub client_id: String,
     pub redirect_uri: String,
     pub response_type: String,
-    pub scope: String,
+    pub scope: Option<String>,
     pub code_challenge: String,
     pub code_challenge_method: String,
     pub state: Option<String>,
@@ -37,21 +36,9 @@ pub struct AuthorizeQuery {
 pub async fn authorize(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(params): Query<AuthorizeQuery>,
+    Query(params): Query<AuthorizeParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Validate response_type and PKCE method upfront.
-    if params.response_type != "code" {
-        return Err(AppError::InvalidInput(
-            "response_type must be 'code'".into(),
-        ));
-    }
-    if params.code_challenge_method != "S256" {
-        return Err(AppError::InvalidInput(
-            "code_challenge_method must be 'S256'".into(),
-        ));
-    }
-
-    // Extract user from Bearer token.
+    // Extract and validate Bearer token — API-first: user must be pre-authenticated.
     let bearer = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
@@ -59,27 +46,51 @@ pub async fn authorize(
         .ok_or(AppError::Unauthorized)?;
 
     let claims = token_service::validate_access_token(bearer, &state.config.jwt_secret)?;
-    let user_id: Uuid = claims.sub.parse().map_err(|_| AppError::Unauthorized)?;
-    let tenant_id: Uuid = claims.tid.parse().map_err(|_| AppError::Unauthorized)?;
+    let tenant_id = Uuid::parse_str(&claims.tid)
+        .map_err(|_| AppError::TokenError("invalid tenant_id in token".into()))?;
+    let user_id = Uuid::parse_str(&claims.sub)
+        .map_err(|_| AppError::TokenError("invalid sub in token".into()))?;
 
-    // Validate client within tenant context.
+    if params.response_type != "code" {
+        return Err(AppError::InvalidInput("response_type must be code".into()));
+    }
+    if params.code_challenge_method != "S256" {
+        return Err(AppError::InvalidInput(
+            "code_challenge_method must be S256".into(),
+        ));
+    }
+    if params.code_challenge.is_empty() {
+        return Err(AppError::InvalidInput("code_challenge required".into()));
+    }
+
     let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;
+
     let client = client_service::find_by_client_id(&txn, &params.client_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
+    if !client.is_active {
+        txn.commit().await?;
+        return Err(AppError::Unauthorized);
+    }
+
     if !client_service::redirect_uri_allowed(&client, &params.redirect_uri) {
+        txn.commit().await?;
         return Err(AppError::InvalidInput("redirect_uri not allowed".into()));
     }
 
-    let requested_scopes: Vec<&str> = params.scope.split_whitespace().collect();
-    if !client_service::scopes_allowed(&client, &requested_scopes) {
-        return Err(AppError::InvalidInput("scope not allowed for this client".into()));
-    }
+    let code = hex::encode(Sha256::digest(Uuid::new_v4().to_string().as_bytes()))
+        + &hex::encode(Sha256::digest(Uuid::new_v4().to_string().as_bytes()));
 
-    // Generate authorization code.
-    let code = hex::encode(Uuid::new_v4().as_bytes()) + &hex::encode(Uuid::new_v4().as_bytes());
-    let expires_at = (Utc::now() + chrono::Duration::minutes(5)).fixed_offset();
+    let scopes = params
+        .scope
+        .as_deref()
+        .unwrap_or("openid")
+        .split_whitespace()
+        .map(|s| s.to_owned())
+        .collect::<Vec<_>>();
+
+    let expires_at = (Utc::now() + chrono::Duration::minutes(10)).fixed_offset();
 
     authorization_codes::ActiveModel {
         code: Set(code.clone()),
@@ -87,7 +98,7 @@ pub async fn authorize(
         client_id: Set(params.client_id),
         user_id: Set(user_id),
         redirect_uri: Set(params.redirect_uri.clone()),
-        scopes: Set(params.scope),
+        scopes: Set(serde_json::json!(scopes)),
         code_challenge: Set(params.code_challenge),
         nonce: Set(params.nonce),
         expires_at: Set(expires_at),
@@ -98,18 +109,18 @@ pub async fn authorize(
 
     txn.commit().await?;
 
-    let mut location = format!("{}?code={}", params.redirect_uri, code);
+    let mut redirect_url = format!("{}?code={}", params.redirect_uri, code);
     if let Some(s) = &params.state {
-        location.push_str(&format!("&state={s}"));
+        redirect_url.push_str(&format!("&state={s}"));
     }
 
-    Ok(Redirect::temporary(&location))
+    Ok(Redirect::to(&redirect_url))
 }
 
-// ─── Token ───────────────────────────────────────────────────────────────────
+// ── /oauth/token ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub struct TokenForm {
+pub struct TokenRequest {
     pub grant_type: String,
     pub code: String,
     pub redirect_uri: String,
@@ -123,90 +134,110 @@ pub struct TokenResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub id_token: String,
-    pub token_type: String,
+    pub token_type: &'static str,
     pub expires_in: i64,
     pub scope: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct IdClaims {
-    pub iss: String,
-    pub sub: String,
-    pub aud: String,
-    pub iat: i64,
-    pub exp: i64,
-    pub email: String,
+#[derive(Serialize)]
+struct IdTokenClaims {
+    iss: String,
+    sub: String,
+    aud: String,
+    iat: i64,
+    exp: i64,
+    email: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub nonce: Option<String>,
-}
-
-fn verify_pkce(code_verifier: &str, code_challenge: &str) -> bool {
-    let hash = Sha256::digest(code_verifier.as_bytes());
-    URL_SAFE_NO_PAD.encode(hash) == code_challenge
+    nonce: Option<String>,
 }
 
 pub async fn token(
     State(state): State<AppState>,
-    Form(form): Form<TokenForm>,
+    Form(req): Form<TokenRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    if form.grant_type != "authorization_code" {
-        return Err(AppError::InvalidInput(
-            "grant_type must be 'authorization_code'".into(),
-        ));
+    if req.grant_type != "authorization_code" {
+        return Err(AppError::InvalidInput("unsupported grant_type".into()));
     }
 
-    let now = Utc::now();
-
-    // Fetch and validate the authorization code (no tenant context — cross-tenant lookup).
-    let auth_code = authorization_codes::Entity::find()
-        .filter(authorization_codes::Column::Code.eq(&form.code))
-        .filter(authorization_codes::Column::ClientId.eq(&form.client_id))
-        .filter(authorization_codes::Column::UsedAt.is_null())
-        .filter(authorization_codes::Column::ExpiresAt.gt(now.fixed_offset()))
+    // 1. Fetch the authorization code (no RLS — codes table has no policy).
+    let auth_code = authorization_codes::Entity::find_by_id(&req.code)
         .one(&state.db)
         .await?
-        .ok_or(AppError::InvalidInput("invalid or expired code".into()))?;
+        .ok_or_else(|| AppError::InvalidInput("invalid code".into()))?;
 
-    if auth_code.redirect_uri != form.redirect_uri {
+    let now = Utc::now().fixed_offset();
+    if auth_code.expires_at < now {
+        return Err(AppError::InvalidInput("code expired".into()));
+    }
+    if auth_code.used_at.is_some() {
+        return Err(AppError::InvalidInput("code already used".into()));
+    }
+    if auth_code.redirect_uri != req.redirect_uri {
         return Err(AppError::InvalidInput("redirect_uri mismatch".into()));
     }
-    if !verify_pkce(&form.code_verifier, &auth_code.code_challenge) {
-        return Err(AppError::InvalidInput("code_verifier invalid".into()));
+
+    // 2. Verify PKCE S256: BASE64URL(SHA256(code_verifier)) == stored code_challenge.
+    let computed = URL_SAFE_NO_PAD.encode(Sha256::digest(req.code_verifier.as_bytes()));
+    if computed != auth_code.code_challenge {
+        return Err(AppError::InvalidInput("invalid code_verifier".into()));
     }
 
     let tenant_id = auth_code.tenant_id;
-
-    // Validate client.
     let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;
-    let client = client_service::find_by_client_id(&txn, &form.client_id)
+
+    // 3. Validate client (RLS scopes this to the right tenant).
+    let client = client_service::find_by_client_id(&txn, &req.client_id)
         .await?
-        .ok_or(AppError::NotFound)?;
+        .ok_or(AppError::Unauthorized)?;
+
+    if !client.is_active {
+        txn.commit().await?;
+        return Err(AppError::Unauthorized);
+    }
+    if client.client_id != auth_code.client_id {
+        txn.commit().await?;
+        return Err(AppError::Unauthorized);
+    }
 
     if client.is_confidential {
-        let secret = form
+        let secret = req
             .client_secret
             .as_deref()
             .ok_or(AppError::Unauthorized)?;
-        if !client_service::verify_secret(&client, secret) {
+        if !client_service::verify_secret(secret, &client.client_secret) {
+            txn.commit().await?;
             return Err(AppError::Unauthorized);
         }
     }
 
-    // Mark code as used (single-use enforcement).
+    // 4. Mark code used.
     let mut active: authorization_codes::ActiveModel = auth_code.clone().into();
-    active.used_at = Set(Some(now.fixed_offset()));
+    active.used_at = Set(Some(now));
     active.update(&txn).await?;
 
-    // Load user to get email for id_token.
+    // 5. Get tenant key to decrypt user email for id_token.
+    let tenant_record = tenant_service::find_active(&state.db, tenant_id).await?;
+    let tenant_key = hefesto::decrypt(
+        &tenant_record.encryption_key_encrypted,
+        &state.config.tenant_wrap_key,
+        &state.config.master_encryption_key,
+    )?;
+
     let user = user_service::find_by_id(&txn, auth_code.user_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
-    // Generate standard tokens.
-    let access_token = token_service::generate_access_token(
-        auth_code.user_id,
-        tenant_id,
+    let email_plain = hefesto::decrypt(
         &user.email,
+        &tenant_key,
+        &state.config.master_encryption_key,
+    )?;
+
+    // 6. Issue access + refresh tokens.
+    let access_token = token_service::generate_access_token(
+        user.id,
+        tenant_id,
+        &email_plain,
         &state.config.jwt_secret,
         state.config.jwt_expiration_minutes,
     )?;
@@ -216,93 +247,77 @@ pub async fn token(
     token_service::store_refresh_token(
         &txn,
         tenant_id,
-        auth_code.user_id,
+        user.id,
         token_hash,
         state.config.refresh_token_expiration_days,
     )
     .await?;
 
-    // Fetch the decrypted email properly via the tenant key.
-    let tenant_rec = crate::services::tenant_service::find_active(&state.db, tenant_id).await?;
-    let tenant_key = hefesto::decrypt(
-        &tenant_rec.encryption_key_encrypted,
-        &state.config.tenant_wrap_key,
-        &state.config.master_encryption_key,
-    )?;
-    let email_decrypted = hefesto::decrypt(
-        &user.email,
-        &tenant_key,
-        &state.config.master_encryption_key,
-    )?;
-
     txn.commit().await?;
 
-    // Build id_token (RS256).
-    let id_claims = IdClaims {
+    // 7. Sign id_token (RS256).
+    let scope_str = client_service::scopes_to_vec(&auth_code.scopes).join(" ");
+    let id_claims = IdTokenClaims {
         iss: state.config.ovtl_issuer.clone(),
-        sub: auth_code.user_id.to_string(),
-        aud: form.client_id.clone(),
-        iat: now.timestamp(),
-        exp: now.timestamp() + state.config.jwt_expiration_minutes * 60,
-        email: email_decrypted,
+        sub: user.id.to_string(),
+        aud: req.client_id.clone(),
+        iat: Utc::now().timestamp(),
+        exp: Utc::now().timestamp() + 3600,
+        email: email_plain,
         nonce: auth_code.nonce,
     };
 
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(state.jwk.kid.clone());
-
-    let id_token = jsonwebtoken::encode(&header, &id_claims, &state.jwk.encoding_key)
+    let id_token = state
+        .jwk
+        .sign_id_token(&id_claims)
         .map_err(|e| AppError::TokenError(e.to_string()))?;
 
     Ok(Json(TokenResponse {
         access_token,
         refresh_token,
         id_token,
-        token_type: "Bearer".into(),
+        token_type: "Bearer",
         expires_in: state.config.jwt_expiration_minutes * 60,
-        scope: auth_code.scopes,
+        scope: scope_str,
     }))
 }
 
-// ─── Introspect ──────────────────────────────────────────────────────────────
+// ── /oauth/introspect ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub struct IntrospectForm {
+pub struct IntrospectRequest {
     pub token: String,
 }
 
 pub async fn introspect(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Form(form): Form<IntrospectForm>,
-) -> impl IntoResponse {
-    // Require admin key for introspection.
-    let valid_admin = state
-        .config
-        .admin_key
-        .as_deref()
-        .map(|k| {
-            headers
-                .get("x-ovtl-admin-key")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("")
-                == k
-        })
-        .unwrap_or(false);
-
-    if !valid_admin {
-        return Json(serde_json::json!({ "active": false }));
+    Form(req): Form<IntrospectRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(expected_key) = &state.config.admin_key else {
+        return Err(AppError::NotFound);
+    };
+    let provided = headers
+        .get("x-ovtl-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if provided != expected_key {
+        return Err(AppError::Unauthorized);
     }
 
-    match token_service::validate_access_token(&form.token, &state.config.jwt_secret) {
-        Ok(claims) => Json(serde_json::json!({
-            "active": true,
-            "sub": claims.sub,
-            "tid": claims.tid,
-            "email": claims.email,
-            "exp": claims.exp,
-            "jti": claims.jti,
-        })),
-        Err(_) => Json(serde_json::json!({ "active": false })),
+    match token_service::validate_access_token(&req.token, &state.config.jwt_secret) {
+        Ok(claims) => Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "active": true,
+                "sub": claims.sub,
+                "tid": claims.tid,
+                "email": claims.email,
+                "jti": claims.jti,
+                "exp": claims.exp,
+                "iat": claims.iat,
+            })),
+        )),
+        Err(_) => Ok((StatusCode::OK, Json(serde_json::json!({ "active": false })))),
     }
 }

@@ -2,5 +2,6 @@
 members = [
     "ovtl-core",
     "ovtl-core/migration",
+    "ovtl-cli",
 ]
 resolver = "2"

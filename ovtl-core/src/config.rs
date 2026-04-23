@@ -27,10 +27,10 @@ pub struct Config {
     pub bootstrap_admin_email: Option<String>,
     /// Bootstrap: admin user password. Required if bootstrap_admin_email is set.
     pub bootstrap_admin_password: Option<String>,
-    /// Base URL used as `iss` in id_tokens and in OIDC discovery. Default: http://localhost:3000.
+    /// Issuer URL used in OIDC discovery and id_token `iss` claim.
     pub ovtl_issuer: String,
-    /// RSA private key in PKCS#8 PEM format (base64-encoded). If not set, an ephemeral key
-    /// is generated on startup — tokens won't survive restarts. Set in production.
+    /// Base64-encoded PKCS8 PEM for RS256 id_token signing.
+    /// If not set, an ephemeral key is generated (lost on restart).
     pub rsa_private_key: Option<String>,
 }
 

@@ -8,7 +8,8 @@ pub struct Model {
     pub id: String,
     pub tenant_id: Uuid,
     pub user_id: Uuid,
-    pub data: Json,
+    #[sea_orm(column_type = "Json")]
+    pub data: serde_json::Value,
     pub expires_at: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,
 }

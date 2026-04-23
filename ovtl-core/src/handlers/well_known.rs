@@ -1,10 +1,11 @@
 use axum::{extract::State, response::IntoResponse, Json};
+use serde_json::json;
 
 use crate::state::AppState;
 
 pub async fn discovery(State(state): State<AppState>) -> impl IntoResponse {
     let base = &state.config.ovtl_issuer;
-    Json(serde_json::json!({
+    Json(json!({
         "issuer": base,
         "authorization_endpoint": format!("{base}/oauth/authorize"),
         "token_endpoint": format!("{base}/oauth/token"),
@@ -22,5 +23,8 @@ pub async fn discovery(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 pub async fn jwks(State(state): State<AppState>) -> impl IntoResponse {
-    Json(state.jwk.jwks_json.clone())
+    axum::response::Response::builder()
+        .header("Content-Type", "application/json")
+        .body(state.jwk.jwks_json.clone())
+        .unwrap()
 }

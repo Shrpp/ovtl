@@ -3,6 +3,7 @@ use migration::{Migrator, MigratorTrait};
 use ovtl_core::{
     config::{self, Environment},
     db,
+    handlers::well_known,
     middleware::{
         auth::auth_middleware,
         security::{rate_limit_middleware, security_headers_middleware},
@@ -48,13 +49,12 @@ async fn main() {
     });
 
     let jwk = match &config.rsa_private_key {
-        Some(pem_b64) => JwkService::from_pem(pem_b64),
+        Some(b64) => JwkService::from_pem_b64(b64).unwrap_or_else(|e| {
+            eprintln!("RSA key error: {e}");
+            std::process::exit(1);
+        }),
         None => JwkService::generate(),
-    }
-    .unwrap_or_else(|e| {
-        eprintln!("JWK init failed: {e}");
-        std::process::exit(1);
-    });
+    };
 
     let state = AppState::new(db.clone(), config.clone(), jwk);
 
@@ -107,7 +107,6 @@ fn build_router(state: AppState) -> Router {
 
     let auth_protected = routes::auth::protected_router()
         .merge(routes::user::router())
-        .merge(routes::clients::router())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -118,8 +117,14 @@ fn build_router(state: AppState) -> Router {
         ));
 
     let oauth_callbacks = routes::auth::callback_router();
-    let admin = routes::tenants::router();
-    let oidc = routes::oauth_as::router();
+
+    let admin = routes::tenants::router().merge(routes::clients::router());
+
+    let well_known_router = Router::new()
+        .route("/.well-known/openid-configuration", get(well_known::discovery))
+        .route("/.well-known/jwks.json", get(well_known::jwks));
+
+    let oauth_as = routes::oauth_as::router();
 
     Router::new()
         .merge(public)
@@ -127,7 +132,8 @@ fn build_router(state: AppState) -> Router {
         .merge(auth_protected)
         .merge(oauth_callbacks)
         .merge(admin)
-        .merge(oidc)
+        .merge(well_known_router)
+        .merge(oauth_as)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             security_headers_middleware,

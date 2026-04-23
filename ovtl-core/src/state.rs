@@ -13,8 +13,8 @@ pub type RateLimiterStore = Arc<Mutex<HashMap<String, Vec<Instant>>>>;
 pub struct AppState {
     pub db: DatabaseConnection,
     pub config: Config,
-    pub rate_limiter: RateLimiterStore,
     pub jwk: Arc<JwkService>,
+    pub rate_limiter: RateLimiterStore,
 }
 
 impl AppState {
@@ -22,8 +22,8 @@ impl AppState {
         Self {
             db,
             config,
-            rate_limiter: Arc::new(Mutex::new(HashMap::new())),
             jwk: Arc::new(jwk),
+            rate_limiter: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
