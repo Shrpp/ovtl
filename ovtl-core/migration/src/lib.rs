@@ -4,6 +4,7 @@ mod m20240101_000001_create_tenants;
 mod m20240101_000002_create_users;
 mod m20240101_000003_create_refresh_tokens;
 mod m20240101_000004_create_oauth_accounts;
+mod m20240101_000005_security_hardening;
 
 pub struct Migrator;
 
@@ -15,6 +16,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20240101_000002_create_users::Migration),
             Box::new(m20240101_000003_create_refresh_tokens::Migration),
             Box::new(m20240101_000004_create_oauth_accounts::Migration),
+            Box::new(m20240101_000005_security_hardening::Migration),
         ]
     }
 }

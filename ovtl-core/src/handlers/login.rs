@@ -1,12 +1,13 @@
-use axum::{extract::State, response::IntoResponse, Extension, Json};
+use axum::{extract::{ConnectInfo, State}, response::IntoResponse, Extension, Json};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use validator::Validate;
 
 use crate::{
     db,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::{token_service, user_service},
+    services::{audit_service, lockout_service, token_service, user_service},
     state::AppState,
 };
 
@@ -27,6 +28,7 @@ pub struct TokenResponse {
 
 pub async fn login(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Extension(ctx): Extension<TenantContext>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -34,19 +36,60 @@ pub async fn login(
         .validate()
         .map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
-    let email_lookup = hefesto::hash_for_lookup(&payload.email, &ctx.tenant_key);
+    let ip = addr.ip().to_string();
+
+    // Normalize email before lookup — consistent with registration.
+    let email_normalized = payload.email.trim().to_lowercase();
+    let email_lookup = hefesto::hash_for_lookup(&email_normalized, &ctx.tenant_key);
+
+    // Check account lockout before touching the DB user record.
+    if lockout_service::is_locked(&state.db, ctx.tenant_id, &email_lookup).await? {
+        audit_service::record(
+            state.db.clone(),
+            ctx.tenant_id,
+            None,
+            "login.locked",
+            Some(ip.clone()),
+            None,
+        );
+        return Err(AppError::Unauthorized);
+    }
 
     let txn = db::begin_tenant_txn(&state.db, ctx.tenant_id).await?;
 
-    let user = user_service::find_by_email_lookup(&txn, &email_lookup)
-        .await?
-        .ok_or(AppError::Unauthorized)?;
+    let user = match user_service::find_by_email_lookup(&txn, &email_lookup).await? {
+        Some(u) => u,
+        None => {
+            txn.commit().await?;
+            lockout_service::record_attempt(&state.db, ctx.tenant_id, &email_lookup).await?;
+            audit_service::record(
+                state.db.clone(),
+                ctx.tenant_id,
+                None,
+                "login.failed.unknown_email",
+                Some(ip),
+                None,
+            );
+            return Err(AppError::Unauthorized);
+        }
+    };
 
     if !user.is_active {
+        txn.commit().await?;
         return Err(AppError::Unauthorized);
     }
 
     if !hefesto::verify_password(&payload.password, &user.password_hash) {
+        txn.commit().await?;
+        lockout_service::record_attempt(&state.db, ctx.tenant_id, &email_lookup).await?;
+        audit_service::record(
+            state.db.clone(),
+            ctx.tenant_id,
+            Some(user.id),
+            "login.failed.wrong_password",
+            Some(ip),
+            None,
+        );
         return Err(AppError::Unauthorized);
     }
 
@@ -77,6 +120,17 @@ pub async fn login(
     .await?;
 
     txn.commit().await?;
+
+    // Clear failed attempts and record successful login.
+    lockout_service::clear_attempts(&state.db, ctx.tenant_id, &email_lookup).await?;
+    audit_service::record(
+        state.db.clone(),
+        ctx.tenant_id,
+        Some(user.id),
+        "login.success",
+        Some(ip),
+        None,
+    );
 
     Ok(Json(TokenResponse {
         access_token,

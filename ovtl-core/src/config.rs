@@ -7,6 +7,9 @@ pub struct Config {
     pub jwt_expiration_minutes: i64,
     pub refresh_token_expiration_days: i64,
     pub master_encryption_key: String,
+    /// Separate key used to wrap per-tenant encryption keys.
+    /// Must differ from master_encryption_key.
+    pub tenant_wrap_key: String,
     pub server_host: String,
     pub server_port: u16,
     pub environment: Environment,
@@ -42,6 +45,14 @@ impl Config {
             return Err("MASTER_ENCRYPTION_KEY must be at least 32 characters".into());
         }
 
+        let tenant_wrap_key = require("TENANT_WRAP_KEY")?;
+        if tenant_wrap_key.len() < 32 {
+            return Err("TENANT_WRAP_KEY must be at least 32 characters".into());
+        }
+        if tenant_wrap_key == master_encryption_key {
+            return Err("TENANT_WRAP_KEY must differ from MASTER_ENCRYPTION_KEY".into());
+        }
+
         let environment = match env::var("ENVIRONMENT")
             .unwrap_or_else(|_| "development".into())
             .as_str()
@@ -49,6 +60,14 @@ impl Config {
             "production" => Environment::Production,
             _ => Environment::Development,
         };
+
+        let database_url = require("DATABASE_URL")?;
+        if environment == Environment::Production && !database_url.contains("sslmode") {
+            return Err(
+                "DATABASE_URL must include sslmode parameter in production (e.g. sslmode=require)"
+                    .into(),
+            );
+        }
 
         let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
             .unwrap_or_else(|_| "*".into())
@@ -60,15 +79,18 @@ impl Config {
         if environment == Environment::Production
             && cors_allowed_origins == vec!["*".to_string()]
         {
-            return Err("CORS_ALLOWED_ORIGINS must be set explicitly in production (no wildcard)".into());
+            return Err(
+                "CORS_ALLOWED_ORIGINS must be set explicitly in production (no wildcard)".into(),
+            );
         }
 
         Ok(Self {
-            database_url: require("DATABASE_URL")?,
+            database_url,
             jwt_secret,
             jwt_expiration_minutes: parse_i64("JWT_EXPIRATION_MINUTES", 15)?,
             refresh_token_expiration_days: parse_i64("REFRESH_TOKEN_EXPIRATION_DAYS", 30)?,
             master_encryption_key,
+            tenant_wrap_key,
             server_host: env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".into()),
             server_port: env::var("SERVER_PORT")
                 .unwrap_or_else(|_| "3000".into())

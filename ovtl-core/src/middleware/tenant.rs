@@ -9,8 +9,6 @@ use crate::{error::AppError, services::tenant_service, state::AppState};
 
 const TENANT_HEADER: &str = "x-ovtl-tenant-id";
 
-/// Tenant context injected into every protected request.
-/// Handlers extract it via `Extension(ctx): Extension<TenantContext>`.
 #[derive(Clone, Debug)]
 pub struct TenantContext {
     pub tenant_id: Uuid,
@@ -18,7 +16,6 @@ pub struct TenantContext {
     pub tenant_key: String,
 }
 
-/// Axum middleware — validates tenant header, decrypts tenant key, injects TenantContext.
 pub async fn tenant_middleware(
     State(state): State<AppState>,
     mut req: Request,
@@ -33,10 +30,10 @@ pub async fn tenant_middleware(
 
     let record = tenant_service::find_active(&state.db, tenant_id).await?;
 
-    // Tenant key wrapped with master_key (both layers). Phase 10: dedicated TENANT_WRAP_KEY.
+    // Tenant key is double-envelope encrypted: inner key = TENANT_WRAP_KEY, outer = MASTER_ENCRYPTION_KEY.
     let tenant_key = hefesto::decrypt(
         &record.encryption_key_encrypted,
-        &state.config.master_encryption_key,
+        &state.config.tenant_wrap_key,
         &state.config.master_encryption_key,
     )?;
 

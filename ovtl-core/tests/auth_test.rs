@@ -12,11 +12,10 @@ async fn setup() -> (sea_orm::DatabaseConnection, Config, Uuid) {
     let cfg = Config::from_env().expect("config");
     let db = db::connect(&cfg.database_url).await.expect("db");
 
-    // Encrypt a real tenant key and upsert a dev tenant
     let tenant_key_plain = "dev-test-tenant-key-32chars-long!";
     let encrypted_key = hefesto::encrypt(
         tenant_key_plain,
-        &cfg.master_encryption_key,
+        &cfg.tenant_wrap_key,
         &cfg.master_encryption_key,
     )
     .expect("encrypt");
@@ -60,7 +59,7 @@ async fn test_register_and_login() {
 
     let tenant_key = hefesto::decrypt(
         &tenant.encryption_key,
-        &cfg.master_encryption_key,
+        &cfg.tenant_wrap_key,
         &cfg.master_encryption_key,
     )
     .expect("decrypt tenant key");
@@ -68,7 +67,6 @@ async fn test_register_and_login() {
     let email = "integration@ovtl.dev";
     let password = "Test1234!";
 
-    // Cleanup previous run
     let _ = db
         .execute_unprepared(&format!("SET app.tenant_id = '{tenant_id}'"))
         .await;
@@ -79,7 +77,6 @@ async fn test_register_and_login() {
         ))
         .await;
 
-    // Register
     let email_lookup = hefesto::hash_for_lookup(email, &tenant_key);
     let email_encrypted = hefesto::encrypt(email, &tenant_key, &cfg.master_encryption_key)
         .expect("encrypt email");
@@ -101,7 +98,6 @@ async fn test_register_and_login() {
 
     assert_eq!(user.tenant_id, tenant_id);
 
-    // Login — find user and verify password
     let txn = db::begin_tenant_txn(&db, tenant_id).await.expect("begin txn");
     let found = ovtl_core::services::user_service::find_by_email_lookup(&txn, &email_lookup)
         .await
@@ -112,7 +108,6 @@ async fn test_register_and_login() {
     assert!(hefesto::verify_password(password, &found.password_hash));
     assert_eq!(found.id, user.id);
 
-    // JWT round-trip
     let token = token_service::generate_access_token(
         user.id,
         tenant_id,
@@ -128,11 +123,9 @@ async fn test_register_and_login() {
     assert_eq!(claims.sub, user.id.to_string());
     assert_eq!(claims.tid, tenant_id.to_string());
     assert_eq!(claims.email, email);
+    assert!(!claims.jti.is_empty());
 
     println!("✓ Register, login, JWT round-trip OK");
-    println!("  Tenant ID : {tenant_id}");
-    println!("  User   ID : {}", user.id);
-    println!("  Token     : {}...{}", &token[..20], &token[token.len()-10..]);
 }
 
 #[tokio::test]
@@ -147,7 +140,7 @@ async fn test_me_endpoint_logic() {
 
     let tenant_key = hefesto::decrypt(
         &tenant.encryption_key,
-        &cfg.master_encryption_key,
+        &cfg.tenant_wrap_key,
         &cfg.master_encryption_key,
     )
     .expect("decrypt tenant key");
@@ -155,7 +148,6 @@ async fn test_me_endpoint_logic() {
     let email = "me_test@ovtl.dev";
     let password = "Secret5678!";
 
-    // Cleanup
     let _ = db
         .execute_unprepared(&format!("SET app.tenant_id = '{tenant_id}'"))
         .await;
@@ -166,7 +158,6 @@ async fn test_me_endpoint_logic() {
         ))
         .await;
 
-    // Register
     let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
     let user = ovtl_core::services::user_service::create(
         &txn,
@@ -182,7 +173,6 @@ async fn test_me_endpoint_logic() {
     .unwrap();
     txn.commit().await.unwrap();
 
-    // Generate token
     let token = token_service::generate_access_token(
         user.id,
         tenant_id,
@@ -192,13 +182,11 @@ async fn test_me_endpoint_logic() {
     )
     .unwrap();
 
-    // Validate token and verify AuthUser fields
     let claims = token_service::validate_access_token(&token, &cfg.jwt_secret).unwrap();
     assert_eq!(claims.sub, user.id.to_string());
     assert_eq!(claims.tid, tenant_id.to_string());
     assert_eq!(claims.email, email);
 
-    // Simulate what /users/me does: fetch user + decrypt email
     let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
     let fetched = ovtl_core::entity::users::Entity::find_by_id(user.id)
         .one(&txn)
@@ -222,7 +210,6 @@ async fn create_test_user(
     email: &str,
     password: &str,
 ) -> ovtl_core::entity::users::Model {
-    // cleanup
     let _ = db
         .execute_unprepared(&format!("SET app.tenant_id = '{tenant_id}'"))
         .await;
@@ -260,7 +247,7 @@ async fn test_refresh_token_rotation() {
         .unwrap();
     let tenant_key = hefesto::decrypt(
         &tenant.encryption_key,
-        &cfg.master_encryption_key,
+        &cfg.tenant_wrap_key,
         &cfg.master_encryption_key,
     )
     .unwrap();
@@ -268,7 +255,6 @@ async fn test_refresh_token_rotation() {
     let user =
         create_test_user(&db, &cfg, tenant_id, &tenant_key, "refresh@ovtl.dev", "Pass1234!").await;
 
-    // Store a refresh token
     let rt1 = token_service::generate_refresh_token();
     let hash1 = token_service::hash_refresh_token(&rt1);
     let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
@@ -277,7 +263,6 @@ async fn test_refresh_token_rotation() {
         .unwrap();
     txn.commit().await.unwrap();
 
-    // Use it — should find and rotate
     let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
     let record = token_service::find_valid_refresh_token(&txn, &hash1)
         .await
@@ -285,7 +270,6 @@ async fn test_refresh_token_rotation() {
         .expect("token found");
     token_service::revoke_token(&txn, record).await.unwrap();
 
-    // Second lookup must fail (already revoked)
     let second = token_service::find_valid_refresh_token(&txn, &hash1)
         .await
         .unwrap();
@@ -305,7 +289,7 @@ async fn test_revoke_all_tokens() {
         .unwrap();
     let tenant_key = hefesto::decrypt(
         &tenant.encryption_key,
-        &cfg.master_encryption_key,
+        &cfg.tenant_wrap_key,
         &cfg.master_encryption_key,
     )
     .unwrap();
@@ -315,7 +299,6 @@ async fn test_revoke_all_tokens() {
     )
     .await;
 
-    // Store 3 tokens
     let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
     for _ in 0..3 {
         let rt = token_service::generate_refresh_token();
@@ -326,14 +309,12 @@ async fn test_revoke_all_tokens() {
     }
     txn.commit().await.unwrap();
 
-    // Revoke all
     let txn = db::begin_tenant_txn(&db, tenant_id).await.unwrap();
     token_service::revoke_all_user_tokens(&txn, user.id)
         .await
         .unwrap();
     txn.commit().await.unwrap();
 
-    // Verify all are revoked
     use ovtl_core::entity::refresh_tokens;
     use sea_orm::{ColumnTrait, QueryFilter};
     let active: Vec<refresh_tokens::Model> = refresh_tokens::Entity::find()
@@ -353,17 +334,14 @@ async fn test_oauth_state_roundtrip() {
     let cfg = Config::from_env().expect("config");
     let tenant_id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
 
-    // State encodes tenant_id and survives a round-trip
     let state = oauth_service::generate_state(tenant_id, &cfg.jwt_secret);
     let recovered = oauth_service::verify_state(&state, &cfg.jwt_secret);
     assert_eq!(recovered, Some(tenant_id), "state must decode to original tenant_id");
 
-    // Tampered state must be rejected
     let mut bad = state.clone();
     bad.push('x');
     assert_eq!(oauth_service::verify_state(&bad, &cfg.jwt_secret), None);
 
-    // Wrong secret must be rejected
     assert_eq!(oauth_service::verify_state(&state, "wrong_secret"), None);
 
     println!("✓ OAuth HMAC state roundtrip OK");
