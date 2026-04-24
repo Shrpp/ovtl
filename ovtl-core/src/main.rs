@@ -11,7 +11,7 @@ use ovtl_core::{
         tenant::tenant_middleware,
     },
     routes,
-    services::{bootstrap_service, jwk_service::JwkService, lockout_service, token_service},
+    services::{bootstrap_service, jwk_service::JwkService, lockout_service, session_service, token_service},
     state::AppState,
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -81,6 +81,14 @@ async fn main() {
                 Ok(n) => tracing::info!("cleanup: removed {n} stale login attempts"),
                 Err(e) => tracing::error!("lockout cleanup error: {e}"),
             }
+            match token_service::cleanup_expired_jtis(&db).await {
+                Ok(n) => tracing::info!("cleanup: removed {n} expired JTIs"),
+                Err(e) => tracing::error!("JTI cleanup error: {e}"),
+            }
+            match session_service::cleanup_expired(&db).await {
+                Ok(n) => tracing::info!("cleanup: removed {n} expired sessions"),
+                Err(e) => tracing::error!("session cleanup error: {e}"),
+            }
         }
     });
 
@@ -131,7 +139,10 @@ fn build_router(state: AppState) -> Router {
 
     let admin = routes::tenants::router()
         .merge(routes::clients::router())
-        .merge(routes::admin_users::router());
+        .merge(routes::admin_users::router())
+        .merge(routes::admin_sessions::router())
+        .merge(routes::admin_roles::router())
+        .merge(routes::admin_permissions::router());
 
     let well_known_router = Router::new()
         .route("/.well-known/openid-configuration", get(well_known::discovery))

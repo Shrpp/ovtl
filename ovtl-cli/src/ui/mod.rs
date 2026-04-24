@@ -2,5 +2,8 @@ pub mod clients;
 pub mod health;
 pub mod layout;
 pub mod login;
+pub mod permissions;
 pub mod quickstart;
+pub mod roles;
+pub mod sessions;
 pub mod users;

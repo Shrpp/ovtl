@@ -1,7 +1,7 @@
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait, Set};
 use uuid::Uuid;
 
-use crate::{config::Config, db, entity::tenants, error::AppError, services::user_service};
+use crate::{config::Config, db, entity::tenants, error::AppError, services::{seed_service, user_service}};
 
 pub async fn run(db: &DatabaseConnection, config: &Config) -> Result<(), AppError> {
     let (Some(email), Some(password)) = (
@@ -53,7 +53,7 @@ pub async fn run(db: &DatabaseConnection, config: &Config) -> Result<(), AppErro
     let password_hash = hefesto::hash_password(password)?;
 
     let txn = db::begin_tenant_txn(db, tenant_id).await?;
-    user_service::create(
+    let admin_user = user_service::create(
         &txn,
         user_service::CreateUserInput {
             tenant_id,
@@ -65,11 +65,17 @@ pub async fn run(db: &DatabaseConnection, config: &Config) -> Result<(), AppErro
     .await?;
     txn.commit().await?;
 
+    // Seed SuperAdmin role + default:super_admin permission for master tenant.
+    seed_service::seed_tenant_defaults(db, tenant_id).await?;
+
+    // Assign SuperAdmin role to the bootstrap admin user.
+    seed_service::assign_super_admin_role(db, tenant_id, admin_user.id).await?;
+
     tracing::info!(
         tenant_id = %tenant_id,
         slug,
         email = %email_normalized,
-        "bootstrap: master tenant and admin user created"
+        "bootstrap: master tenant, admin user, and SuperAdmin role created"
     );
 
     Ok(())

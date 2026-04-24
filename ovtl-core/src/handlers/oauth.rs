@@ -74,6 +74,8 @@ pub async fn callback(
         user.id,
         tenant_id,
         &email,
+        vec![],
+        vec![],
         &state.config.jwt_secret,
         state.config.jwt_expiration_minutes,
     )?;

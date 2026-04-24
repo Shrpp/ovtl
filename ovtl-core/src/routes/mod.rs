@@ -1,3 +1,6 @@
+pub mod admin_permissions;
+pub mod admin_roles;
+pub mod admin_sessions;
 pub mod admin_users;
 pub mod auth;
 pub mod clients;

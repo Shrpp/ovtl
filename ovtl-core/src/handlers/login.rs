@@ -1,4 +1,4 @@
-use axum::{extract::{ConnectInfo, State}, response::IntoResponse, Extension, Json};
+use axum::{extract::{ConnectInfo, State}, http::header, response::IntoResponse, Extension, Json};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use validator::Validate;
@@ -7,7 +7,7 @@ use crate::{
     db,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::{audit_service, lockout_service, token_service, user_service},
+    services::{audit_service, lockout_service, permission_service, role_service, session_service, token_service, user_service},
     state::AppState,
 };
 
@@ -99,10 +99,19 @@ pub async fn login(
         &state.config.master_encryption_key,
     )?;
 
+    let roles = role_service::list_names_for_user(&txn, user.id)
+        .await
+        .unwrap_or_default();
+    let permissions = permission_service::list_names_for_user(&txn, user.id)
+        .await
+        .unwrap_or_default();
+
     let access_token = token_service::generate_access_token(
         user.id,
         ctx.tenant_id,
         &email_plain,
+        roles,
+        permissions,
         &state.config.jwt_secret,
         state.config.jwt_expiration_minutes,
     )?;
@@ -128,13 +137,36 @@ pub async fn login(
         ctx.tenant_id,
         Some(user.id),
         "login.success",
-        Some(ip),
+        Some(ip.clone()),
         None,
     );
 
-    Ok(Json(TokenResponse {
-        access_token,
-        refresh_token,
-        expires_in: state.config.jwt_expiration_minutes * 60,
-    }))
+    // Create SSO session.
+    let session_ttl_days = state.config.refresh_token_expiration_days;
+    let session_id = session_service::create(
+        &state.db,
+        ctx.tenant_id,
+        user.id,
+        session_service::SessionData { email: email_plain, ip: Some(ip) },
+        session_ttl_days,
+    )
+    .await
+    .unwrap_or_default();
+
+    let cookie = format!(
+        "ovtl_session={session_id}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}",
+        session_ttl_days * 86400
+    );
+
+    let mut response_headers = axum::http::HeaderMap::new();
+    response_headers.insert(header::SET_COOKIE, cookie.parse().unwrap());
+
+    Ok((
+        response_headers,
+        Json(TokenResponse {
+            access_token,
+            refresh_token,
+            expires_in: state.config.jwt_expiration_minutes * 60,
+        }),
+    ))
 }

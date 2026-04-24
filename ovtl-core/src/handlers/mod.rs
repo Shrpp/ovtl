@@ -1,5 +1,9 @@
 pub mod admin_auth;
+pub mod admin_permissions;
+pub mod admin_roles;
+pub mod admin_sessions;
 pub mod admin_users;
+pub mod oauth_revoke;
 pub mod clients;
 pub mod login;
 pub mod logout;

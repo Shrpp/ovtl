@@ -9,6 +9,12 @@ mod m20240101_000006_oauth_clients;
 mod m20240101_000007_authorization_codes;
 mod m20240101_000008_sessions;
 mod m20240101_000009_fix_rls_force;
+mod m20240101_000010_revoked_jtis;
+mod m20240101_000011_sessions_last_seen;
+mod m20240101_000012_roles;
+mod m20240101_000013_permissions;
+mod m20240101_000014_sessions_rls;
+mod m20240101_000015_rls_app_role;
 
 pub struct Migrator;
 
@@ -25,6 +31,12 @@ impl MigratorTrait for Migrator {
             Box::new(m20240101_000007_authorization_codes::Migration),
             Box::new(m20240101_000008_sessions::Migration),
             Box::new(m20240101_000009_fix_rls_force::Migration),
+            Box::new(m20240101_000010_revoked_jtis::Migration),
+            Box::new(m20240101_000011_sessions_last_seen::Migration),
+            Box::new(m20240101_000012_roles::Migration),
+            Box::new(m20240101_000013_permissions::Migration),
+            Box::new(m20240101_000014_sessions_rls::Migration),
+            Box::new(m20240101_000015_rls_app_role::Migration),
         ]
     }
 }

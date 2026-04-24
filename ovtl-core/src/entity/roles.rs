@@ -2,16 +2,13 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "sessions")]
+#[sea_orm(table_name = "roles")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
-    pub id: String,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
     pub tenant_id: Uuid,
-    pub user_id: Uuid,
-    #[sea_orm(column_type = "Json")]
-    pub data: serde_json::Value,
-    pub expires_at: DateTimeWithTimeZone,
-    pub last_seen_at: DateTimeWithTimeZone,
+    pub name: String,
+    pub description: String,
     pub created_at: DateTimeWithTimeZone,
 }
 

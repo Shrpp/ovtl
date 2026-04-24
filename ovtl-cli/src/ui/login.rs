@@ -12,6 +12,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     let AppMode::Login {
         email,
         password,
+        slug,
         field,
         error,
     } = &app.mode
@@ -22,7 +23,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     let size = frame.area();
 
     let box_w: u16 = 52;
-    let box_h: u16 = 16;
+    let box_h: u16 = 19;
     let area = Rect {
         x: size.x + size.width.saturating_sub(box_w) / 2,
         y: size.y + size.height.saturating_sub(box_h) / 2,
@@ -53,6 +54,7 @@ pub fn render(frame: &mut Frame, app: &App) {
             Constraint::Length(1), // spacer
             Constraint::Length(3), // email
             Constraint::Length(3), // password
+            Constraint::Length(3), // tenant slug
             Constraint::Length(1), // spacer
             Constraint::Length(1), // error
             Constraint::Min(1),    // hints
@@ -64,7 +66,6 @@ pub fn render(frame: &mut Frame, app: &App) {
         .alignment(Alignment::Center);
     frame.render_widget(subtitle, chunks[0]);
 
-    let email_active = *field == 0;
     let border_style = |active: bool| {
         if active {
             Style::default().fg(Color::Cyan)
@@ -73,43 +74,49 @@ pub fn render(frame: &mut Frame, app: &App) {
         }
     };
 
-    let email_val = if email_active {
-        format!("{email}█")
-    } else {
-        email.clone()
-    };
-    let email_widget = Paragraph::new(email_val).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Email")
-            .border_style(border_style(email_active)),
+    // Email
+    let email_active = *field == 0;
+    let email_val = if email_active { format!("{email}█") } else { email.clone() };
+    frame.render_widget(
+        Paragraph::new(email_val).block(
+            Block::default().borders(Borders::ALL).title("Email").border_style(border_style(email_active)),
+        ),
+        chunks[2],
     );
-    frame.render_widget(email_widget, chunks[2]);
 
+    // Password
     let pass_active = *field == 1;
-    let masked = "*".repeat(password.len());
-    let pass_val = if pass_active {
-        format!("{masked}█")
-    } else {
-        masked
-    };
-    let pass_widget = Paragraph::new(pass_val).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Password")
-            .border_style(border_style(pass_active)),
+    let masked = "•".repeat(password.len());
+    let pass_val = if pass_active { format!("{masked}█") } else { masked };
+    frame.render_widget(
+        Paragraph::new(pass_val).block(
+            Block::default().borders(Borders::ALL).title("Password").border_style(border_style(pass_active)),
+        ),
+        chunks[3],
     );
-    frame.render_widget(pass_widget, chunks[3]);
+
+    // Tenant slug
+    let slug_active = *field == 2;
+    let slug_val = if slug_active { format!("{slug}█") } else { slug.clone() };
+    frame.render_widget(
+        Paragraph::new(slug_val).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Tenant (slug)")
+                .border_style(border_style(slug_active)),
+        ),
+        chunks[4],
+    );
 
     if let Some(err) = error {
-        let err_widget = Paragraph::new(Span::styled(
-            err.as_str(),
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .alignment(Alignment::Center);
-        frame.render_widget(err_widget, chunks[5]);
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                err.as_str(),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ))
+            .alignment(Alignment::Center),
+            chunks[6],
+        );
     }
 
     let hints = Line::from(vec![
@@ -120,6 +127,5 @@ pub fn render(frame: &mut Frame, app: &App) {
         Span::styled("q", Style::default().fg(Color::Cyan)),
         Span::styled(" Quit", Style::default().fg(Color::DarkGray)),
     ]);
-    let hints_widget = Paragraph::new(hints).alignment(Alignment::Center);
-    frame.render_widget(hints_widget, chunks[6]);
+    frame.render_widget(Paragraph::new(hints).alignment(Alignment::Center), chunks[7]);
 }

@@ -6,15 +6,17 @@ use std::time::Duration;
 use tracing::info;
 use uuid::Uuid;
 
-/// Opens a transaction and sets `app.tenant_id` so PostgreSQL RLS policies activate.
-/// All DB operations inside the returned transaction are automatically tenant-scoped.
+/// Opens a transaction, switches to the non-superuser `ovtl_rls` role, and sets
+/// `app.tenant_id` so PostgreSQL RLS policies activate.
+/// The superuser session bypasses RLS; switching role drops that privilege for the
+/// duration of this transaction so FORCE ROW LEVEL SECURITY actually fires.
 pub async fn begin_tenant_txn(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> Result<DatabaseTransaction, DbErr> {
     let txn = db.begin().await?;
     txn.execute_unprepared(&format!(
-        "SET LOCAL app.tenant_id = '{tenant_id}'"
+        "SET LOCAL ROLE ovtl_rls; SET LOCAL app.tenant_id = '{tenant_id}'"
     ))
     .await?;
     Ok(txn)

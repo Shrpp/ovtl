@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{entity::tenants, error::AppError, handlers::admin_auth, state::AppState};
+use crate::{entity::tenants, error::AppError, handlers::admin_auth, services::seed_service, state::AppState};
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateTenantRequest {
@@ -85,6 +85,9 @@ pub async fn create_tenant(
     .insert(&state.db)
     .await?;
 
+    // Seed SuperAdmin role + default:super_admin permission for every new tenant.
+    seed_service::seed_tenant_defaults(&state.db, tenant.id).await?;
+
     Ok((
         StatusCode::CREATED,
         Json(TenantResponse {
@@ -101,9 +104,19 @@ pub async fn list_tenants(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
+    let scope = admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
 
-    let tenants = tenants::Entity::find().all(&state.db).await?;
+    let tenants = if let Some(tenant_id) = scope {
+        // SuperAdmin: return only their own tenant
+        tenants::Entity::find()
+            .filter(tenants::Column::Id.eq(tenant_id))
+            .all(&state.db)
+            .await?
+    } else {
+        // Master / admin key: full list
+        tenants::Entity::find().all(&state.db).await?
+    };
+
     let response: Vec<TenantResponse> = tenants
         .into_iter()
         .map(|t| TenantResponse {

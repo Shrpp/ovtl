@@ -36,14 +36,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         ]),
     ];
 
-    if let Some(version) = &app.health_version {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("Version  ", Style::default().fg(Color::DarkGray)),
-            Span::raw(version.clone()),
-        ]));
-    }
-
     if let Some(err) = &app.health_error {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(

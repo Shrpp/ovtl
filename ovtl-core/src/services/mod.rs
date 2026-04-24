@@ -1,4 +1,8 @@
 pub mod audit_service;
+pub mod permission_service;
+pub mod role_service;
+pub mod seed_service;
+pub mod session_service;
 pub mod bootstrap_service;
 pub mod client_service;
 pub mod jwk_service;

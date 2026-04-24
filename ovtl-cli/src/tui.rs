@@ -24,6 +24,9 @@ pub async fn run(mut app: App) -> io::Result<()> {
 
     let mut client_table = StatefulTable::new();
     let mut user_table = StatefulTable::new();
+    let mut session_list_state = ratatui::widgets::ListState::default();
+    let mut role_list_state = ratatui::widgets::ListState::default();
+    let mut permission_list_state = ratatui::widgets::ListState::default();
 
     loop {
         terminal.draw(|frame| {
@@ -42,7 +45,9 @@ pub async fn run(mut app: App) -> io::Result<()> {
             match app.tab {
                 Tab::Clients => ui::clients::render(frame, &app, content_body, &mut client_table),
                 Tab::Users => ui::users::render(frame, &app, content_body, &mut user_table),
-                Tab::Health => ui::health::render(frame, &app, content_body),
+                Tab::Roles => ui::roles::render(frame, &app, content_body, &mut role_list_state),
+                Tab::Permissions => ui::permissions::render(frame, &app, content_body, &mut permission_list_state),
+                Tab::Sessions => ui::sessions::render(frame, &app, content_body, &mut session_list_state),
             }
 
             let hints: Vec<(&str, &str)> = match app.focus {
@@ -55,29 +60,46 @@ pub async fn run(mut app: App) -> io::Result<()> {
                 ],
                 Focus::Content => match app.tab {
                     Tab::Clients => vec![
-                        ("←/Esc", "Back"),
-                        ("Tab", "Next tab"),
+                        ("Esc", "Back"),
+                        ("←→", "Switch tab"),
                         ("↑↓", "Navigate"),
                         ("n", "New"),
                         ("e", "Edit"),
                         ("d", "Delete"),
-                        ("r", "Refresh"),
                         ("q", "Quit"),
                     ],
                     Tab::Users => vec![
-                        ("←/Esc", "Back"),
-                        ("Tab", "Next tab"),
+                        ("Esc", "Back"),
+                        ("←→", "Switch tab"),
                         ("↑↓", "Navigate"),
                         ("n", "New"),
                         ("e", "Edit"),
                         ("d", "Deactivate"),
-                        ("r", "Refresh"),
                         ("q", "Quit"),
                     ],
-                    Tab::Health => vec![
-                        ("←/Esc", "Back"),
-                        ("Tab", "Next tab"),
-                        ("r", "Refresh"),
+                    Tab::Roles => vec![
+                        ("Esc", "Back"),
+                        ("←→", "Switch tab"),
+                        ("↑↓", "Navigate"),
+                        ("n", "New"),
+                        ("e", "Edit"),
+                        ("d", "Delete"),
+                        ("q", "Quit"),
+                    ],
+                    Tab::Permissions => vec![
+                        ("Esc", "Back"),
+                        ("←→", "Switch tab"),
+                        ("↑↓", "Navigate"),
+                        ("n", "New"),
+                        ("e", "Edit"),
+                        ("d", "Delete"),
+                        ("q", "Quit"),
+                    ],
+                    Tab::Sessions => vec![
+                        ("Esc", "Back"),
+                        ("←→", "Switch tab"),
+                        ("↑↓", "Navigate"),
+                        ("d", "Revoke"),
                         ("q", "Quit"),
                     ],
                 },
@@ -126,8 +148,38 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         *field,
                     );
                 }
-                Modal::EditUser { email, is_active, .. } => {
-                    modal::render_edit_user(frame, email, *is_active);
+                Modal::EditUser { email, password, is_active, all_roles, permissions, field, role_selected, .. } => {
+                    modal::render_edit_user(frame, email, password, *is_active, all_roles, permissions, *field, *role_selected);
+                }
+                Modal::CreateRole { name, description, field } => {
+                    modal::render_form(
+                        frame,
+                        "New Role",
+                        &[("Name", name), ("Description", description)],
+                        *field,
+                    );
+                }
+                Modal::EditRole { name, description, all_permissions, field, perm_selected, .. } => {
+                    modal::render_edit_role(frame, name, description, all_permissions, *field, *perm_selected);
+                }
+                Modal::CreatePermission { name, description, field } => {
+                    modal::render_form(
+                        frame,
+                        "New Permission",
+                        &[("Name", name), ("Description", description)],
+                        *field,
+                    );
+                }
+                Modal::EditPermission { name, description, field, .. } => {
+                    modal::render_form(
+                        frame,
+                        "Edit Permission",
+                        &[("Name", name), ("Description", description)],
+                        *field,
+                    );
+                }
+                Modal::UserRoles { email, all_roles, selected, .. } => {
+                    modal::render_user_roles(frame, email, all_roles, *selected);
                 }
             }
         })?;
@@ -163,6 +215,7 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
     let AppMode::Login {
         email,
         password,
+        slug,
         field,
         ..
     } = app.mode.clone()
@@ -178,34 +231,35 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
             app.mode = AppMode::Login {
                 email,
                 password,
-                field: (field + 1) % 2,
+                slug,
+                field: (field + 1) % 3,
                 error: None,
             };
         }
         KeyCode::Backspace => {
-            let (mut e, mut p) = (email, password);
-            if field == 0 {
-                e.pop();
-            } else {
-                p.pop();
+            let (mut e, mut p, mut s) = (email, password, slug);
+            match field {
+                0 => { e.pop(); }
+                1 => { p.pop(); }
+                _ => { s.pop(); }
             }
-            app.mode = AppMode::Login { email: e, password: p, field, error: None };
+            app.mode = AppMode::Login { email: e, password: p, slug: s, field, error: None };
         }
         KeyCode::Char(c) => {
-            let (mut e, mut p) = (email, password);
-            if field == 0 {
-                e.push(c);
-            } else {
-                p.push(c);
+            let (mut e, mut p, mut s) = (email, password, slug);
+            match field {
+                0 => e.push(c),
+                1 => p.push(c),
+                _ => s.push(c),
             }
-            app.mode = AppMode::Login { email: e, password: p, field, error: None };
+            app.mode = AppMode::Login { email: e, password: p, slug: s, field, error: None };
         }
         KeyCode::Enter => {
             if email.is_empty() || password.is_empty() {
                 return;
             }
             let client = app.client.clone();
-            match client.login(&email, &password).await {
+            match client.login(&email, &password, &slug).await {
                 Ok(token) => {
                     app.client.set_token(token);
                     app.mode = AppMode::Admin;
@@ -214,7 +268,7 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                     // Auto-open wizard if only the master tenant exists
                     let only_master = app.tenants.len() <= 1
                         && app.tenants.iter().all(|t| t.slug == "master");
-                    if only_master {
+                    if only_master && slug == "master" {
                         app.modal = Modal::QuickStart(QuickStartState::default());
                     }
                 }
@@ -222,6 +276,7 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                     app.mode = AppMode::Login {
                         email,
                         password,
+                        slug,
                         field,
                         error: Some("Invalid credentials".to_string()),
                     };
@@ -230,6 +285,7 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                     app.mode = AppMode::Login {
                         email,
                         password,
+                        slug,
                         field,
                         error: Some(format!("Error: {e}")),
                     };
@@ -365,6 +421,60 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
             }
             return;
         }
+        Modal::CreateRole { mut name, mut description, mut field } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Tab => {
+                    field = (field + 1) % 2;
+                    app.modal = Modal::CreateRole { name, description, field };
+                }
+                KeyCode::Enter => {
+                    if !name.is_empty() {
+                        let n = name.clone();
+                        let d = description.clone();
+                        app.modal = Modal::None;
+                        perform_create_role(app, n, d).await;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if field == 0 { name.pop(); } else { description.pop(); }
+                    app.modal = Modal::CreateRole { name, description, field };
+                }
+                KeyCode::Char(c) => {
+                    if field == 0 { name.push(c); } else { description.push(c); }
+                    app.modal = Modal::CreateRole { name, description, field };
+                }
+                _ => {}
+            }
+            return;
+        }
+        Modal::UserRoles { user_id, email, mut all_roles, mut selected } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Up => {
+                    if selected > 0 { selected -= 1; }
+                    app.modal = Modal::UserRoles { user_id, email, all_roles, selected };
+                }
+                KeyCode::Down => {
+                    if selected + 1 < all_roles.len() { selected += 1; }
+                    app.modal = Modal::UserRoles { user_id, email, all_roles, selected };
+                }
+                KeyCode::Char(' ') => {
+                    if let Some(entry) = all_roles.get_mut(selected) {
+                        entry.2 = !entry.2;
+                    }
+                    app.modal = Modal::UserRoles { user_id, email, all_roles, selected };
+                }
+                KeyCode::Enter => {
+                    let uid = user_id.clone();
+                    let entries = all_roles.clone();
+                    app.modal = Modal::None;
+                    perform_save_user_roles(app, uid, entries).await;
+                }
+                _ => {}
+            }
+            return;
+        }
         Modal::EditClient { mut name, mut redirect_uris, mut scopes, mut field, id } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
@@ -402,17 +512,170 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
             }
             return;
         }
-        Modal::EditUser { id, email, mut is_active } => {
+        Modal::EditUser { id, mut email, mut password, mut is_active, mut all_roles, permissions, mut field, mut role_selected } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
-                KeyCode::Char(' ') => {
+                KeyCode::Tab => {
+                    // Cycle: email(0) → password(1) → is_active(2) → roles(3) → email
+                    field = (field + 1) % 4;
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                KeyCode::Up if field == 3 => {
+                    if role_selected > 0 { role_selected -= 1; }
+                    // Recalculate permissions from currently checked roles
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                KeyCode::Down if field == 3 => {
+                    if role_selected + 1 < all_roles.len() { role_selected += 1; }
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                KeyCode::Char(' ') if field == 2 => {
                     is_active = !is_active;
-                    app.modal = Modal::EditUser { id, email, is_active };
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                KeyCode::Char(' ') if field == 3 => {
+                    if let Some(entry) = all_roles.get_mut(role_selected) {
+                        entry.2 = !entry.2;
+                    }
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
                 }
                 KeyCode::Enter => {
                     let id2 = id.clone();
+                    let e = email.clone();
+                    let pw = if password.is_empty() { None } else { Some(password.clone()) };
+                    let roles = all_roles.clone();
                     app.modal = Modal::None;
-                    perform_edit_user(app, id2, is_active).await;
+                    perform_edit_user(app, id2, e, pw, is_active, roles).await;
+                }
+                KeyCode::Backspace if field == 0 => {
+                    email.pop();
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                KeyCode::Backspace if field == 1 => {
+                    password.pop();
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                KeyCode::Char(c) if field == 0 => {
+                    email.push(c);
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                KeyCode::Char(c) if field == 1 => {
+                    password.push(c);
+                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                }
+                _ => {}
+            }
+            return;
+        }
+        Modal::EditRole { id, mut name, mut description, mut all_permissions, mut field, mut perm_selected } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Tab => {
+                    field = (field + 1) % 3;
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                KeyCode::Up if field == 2 => {
+                    if perm_selected > 0 { perm_selected -= 1; }
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                KeyCode::Down if field == 2 => {
+                    if perm_selected + 1 < all_permissions.len() { perm_selected += 1; }
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                KeyCode::Char(' ') if field == 2 => {
+                    if let Some(entry) = all_permissions.get_mut(perm_selected) {
+                        entry.2 = !entry.2;
+                    }
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                KeyCode::Enter if field != 2 => {
+                    if !name.is_empty() {
+                        let id2 = id.clone();
+                        let n = name.clone();
+                        let d = description.clone();
+                        let perms = all_permissions.clone();
+                        app.modal = Modal::None;
+                        perform_edit_role(app, id2, n, d, perms).await;
+                    }
+                }
+                KeyCode::Enter if field == 2 => {
+                    let id2 = id.clone();
+                    let n = name.clone();
+                    let d = description.clone();
+                    let perms = all_permissions.clone();
+                    app.modal = Modal::None;
+                    perform_edit_role(app, id2, n, d, perms).await;
+                }
+                KeyCode::Backspace if field == 0 => {
+                    name.pop();
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                KeyCode::Backspace if field == 1 => {
+                    description.pop();
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                KeyCode::Char(c) if field == 0 => {
+                    name.push(c);
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                KeyCode::Char(c) if field == 1 => {
+                    description.push(c);
+                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                }
+                _ => {}
+            }
+            return;
+        }
+        Modal::CreatePermission { mut name, mut description, mut field } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Tab => {
+                    field = (field + 1) % 2;
+                    app.modal = Modal::CreatePermission { name, description, field };
+                }
+                KeyCode::Enter => {
+                    if !name.is_empty() {
+                        let n = name.clone();
+                        let d = description.clone();
+                        app.modal = Modal::None;
+                        perform_create_permission(app, n, d).await;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if field == 0 { name.pop(); } else { description.pop(); }
+                    app.modal = Modal::CreatePermission { name, description, field };
+                }
+                KeyCode::Char(c) => {
+                    if field == 0 { name.push(c); } else { description.push(c); }
+                    app.modal = Modal::CreatePermission { name, description, field };
+                }
+                _ => {}
+            }
+            return;
+        }
+        Modal::EditPermission { id, mut name, mut description, mut field } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Tab => {
+                    field = (field + 1) % 2;
+                    app.modal = Modal::EditPermission { id, name, description, field };
+                }
+                KeyCode::Enter => {
+                    if !name.is_empty() {
+                        let id2 = id.clone();
+                        let n = name.clone();
+                        let d = description.clone();
+                        app.modal = Modal::None;
+                        perform_edit_permission(app, id2, n, d).await;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if field == 0 { name.pop(); } else { description.pop(); }
+                    app.modal = Modal::EditPermission { id, name, description, field };
+                }
+                KeyCode::Char(c) => {
+                    if field == 0 { name.push(c); } else { description.push(c); }
+                    app.modal = Modal::EditPermission { id, name, description, field };
                 }
                 _ => {}
             }
@@ -460,15 +723,23 @@ async fn handle_sidebar_key(app: &mut App, code: KeyCode) {
                 if switching_tenant {
                     app.clients = vec![];
                     app.users = vec![];
+                    app.roles = vec![];
+                    app.permissions = vec![];
+                    app.sessions = vec![];
                     app.client_selected = 0;
                     app.user_selected = 0;
+                    app.role_selected = 0;
+                    app.permission_selected = 0;
+                    app.session_selected = 0;
                 }
                 app.active_tenant_id = Some(tid.clone());
                 app.focus = Focus::Content;
                 match app.tab {
                     Tab::Clients => load_clients(app, tid).await,
                     Tab::Users => load_users(app, tid).await,
-                    Tab::Health => {}
+                    Tab::Roles => load_roles(app, tid).await,
+                    Tab::Permissions => load_permissions(app, tid).await,
+                    Tab::Sessions => load_sessions(app, tid).await,
                 }
             }
         }
@@ -491,42 +762,42 @@ async fn handle_sidebar_key(app: &mut App, code: KeyCode) {
 
 async fn handle_content_key(app: &mut App, code: KeyCode) {
     match code {
-        KeyCode::Esc | KeyCode::Left => {
+        KeyCode::Esc => {
             app.focus = Focus::Sidebar;
         }
-        KeyCode::Tab => {
+        KeyCode::Left => {
+            app.tab = match app.tab {
+                Tab::Clients => Tab::Sessions,
+                Tab::Users => Tab::Clients,
+                Tab::Roles => Tab::Users,
+                Tab::Permissions => Tab::Roles,
+                Tab::Sessions => Tab::Permissions,
+            };
+            load_current_tab(app).await;
+        }
+        KeyCode::Right | KeyCode::Tab => {
             app.tab = match app.tab {
                 Tab::Clients => Tab::Users,
-                Tab::Users => Tab::Health,
-                Tab::Health => Tab::Clients,
+                Tab::Users => Tab::Roles,
+                Tab::Roles => Tab::Permissions,
+                Tab::Permissions => Tab::Sessions,
+                Tab::Sessions => Tab::Clients,
             };
             load_current_tab(app).await;
         }
         KeyCode::Up => match app.tab {
-            Tab::Clients => {
-                if app.client_selected > 0 {
-                    app.client_selected -= 1;
-                }
-            }
-            Tab::Users => {
-                if app.user_selected > 0 {
-                    app.user_selected -= 1;
-                }
-            }
-            Tab::Health => {}
+            Tab::Clients => { if app.client_selected > 0 { app.client_selected -= 1; } }
+            Tab::Users => { if app.user_selected > 0 { app.user_selected -= 1; } }
+            Tab::Roles => { if app.role_selected > 0 { app.role_selected -= 1; } }
+            Tab::Permissions => { if app.permission_selected > 0 { app.permission_selected -= 1; } }
+            Tab::Sessions => { if app.session_selected > 0 { app.session_selected -= 1; } }
         },
         KeyCode::Down => match app.tab {
-            Tab::Clients => {
-                if app.client_selected + 1 < app.clients.len() {
-                    app.client_selected += 1;
-                }
-            }
-            Tab::Users => {
-                if app.user_selected + 1 < app.users.len() {
-                    app.user_selected += 1;
-                }
-            }
-            Tab::Health => {}
+            Tab::Clients => { if app.client_selected + 1 < app.clients.len() { app.client_selected += 1; } }
+            Tab::Users => { if app.user_selected + 1 < app.users.len() { app.user_selected += 1; } }
+            Tab::Roles => { if app.role_selected + 1 < app.roles.len() { app.role_selected += 1; } }
+            Tab::Permissions => { if app.permission_selected + 1 < app.permissions.len() { app.permission_selected += 1; } }
+            Tab::Sessions => { if app.session_selected + 1 < app.sessions.len() { app.session_selected += 1; } }
         },
         KeyCode::Char('n') => match app.tab {
             Tab::Clients => {
@@ -548,7 +819,25 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
                     };
                 }
             }
-            Tab::Health => {}
+            Tab::Roles => {
+                if app.active_tenant_id.is_some() {
+                    app.modal = Modal::CreateRole {
+                        name: String::new(),
+                        description: String::new(),
+                        field: 0,
+                    };
+                }
+            }
+            Tab::Permissions => {
+                if app.active_tenant_id.is_some() {
+                    app.modal = Modal::CreatePermission {
+                        name: String::new(),
+                        description: String::new(),
+                        field: 0,
+                    };
+                }
+            }
+            Tab::Sessions => {}
         },
         KeyCode::Char('e') => match app.tab {
             Tab::Clients => {
@@ -563,51 +852,66 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
                 }
             }
             Tab::Users => {
-                if let Some(u) = app.selected_user() {
-                    app.modal = Modal::EditUser {
-                        id: u.id.clone(),
-                        email: u.email.clone(),
-                        is_active: u.is_active,
+                if let (Some(u), Some(tid)) = (app.selected_user().cloned(), app.active_tenant_id.clone()) {
+                    open_edit_user(app, u.id, u.email, u.is_active, tid).await;
+                }
+            }
+            Tab::Roles => {
+                if let (Some(r), Some(tid)) = (app.selected_role().cloned(), app.active_tenant_id.clone()) {
+                    open_edit_role(app, r.id, r.name, r.description, tid).await;
+                }
+            }
+            Tab::Permissions => {
+                if let Some(p) = app.selected_permission() {
+                    app.modal = Modal::EditPermission {
+                        id: p.id.clone(),
+                        name: p.name.clone(),
+                        description: p.description.clone(),
+                        field: 0,
                     };
                 }
             }
-            Tab::Health => {}
+            Tab::Sessions => {}
         },
         KeyCode::Char('d') => match app.tab {
             Tab::Clients => {
                 if let Some(c) = app.selected_client() {
-                    let id = c.id.clone();
-                    let label = c.name.clone();
-                    app.modal = Modal::ConfirmDelete { id, label };
+                    app.modal = Modal::ConfirmDelete { id: c.id.clone(), label: c.name.clone() };
                 }
             }
             Tab::Users => {
                 if let Some(u) = app.selected_user() {
-                    let id = u.id.clone();
-                    let label = u.email.clone();
-                    app.modal = Modal::ConfirmDelete { id, label };
+                    app.modal = Modal::ConfirmDelete { id: u.id.clone(), label: u.email.clone() };
                 }
             }
-            Tab::Health => {}
+            Tab::Roles => {
+                if let Some(r) = app.selected_role() {
+                    app.modal = Modal::ConfirmDelete { id: r.id.clone(), label: r.name.clone() };
+                }
+            }
+            Tab::Permissions => {
+                if let Some(p) = app.selected_permission() {
+                    app.modal = Modal::ConfirmDelete { id: p.id.clone(), label: p.name.clone() };
+                }
+            }
+            Tab::Sessions => {
+                if let Some(s) = app.selected_session() {
+                    app.modal = Modal::ConfirmDelete { id: s.id.clone(), label: s.email.clone() };
+                }
+            }
         },
-        KeyCode::Char('r') => load_current_tab(app).await,
         _ => {}
     }
 }
 
 async fn load_current_tab(app: &mut App) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
     match app.tab {
-        Tab::Clients => {
-            if let Some(tid) = app.active_tenant_id.clone() {
-                load_clients(app, tid).await;
-            }
-        }
-        Tab::Users => {
-            if let Some(tid) = app.active_tenant_id.clone() {
-                load_users(app, tid).await;
-            }
-        }
-        Tab::Health => check_health(app).await,
+        Tab::Clients => load_clients(app, tid).await,
+        Tab::Users => load_users(app, tid).await,
+        Tab::Roles => load_roles(app, tid).await,
+        Tab::Permissions => load_permissions(app, tid).await,
+        Tab::Sessions => load_sessions(app, tid).await,
     }
 }
 
@@ -652,16 +956,42 @@ async fn load_users(app: &mut App, tenant_id: String) {
     app.users_loading = false;
 }
 
+async fn load_roles(app: &mut App, tenant_id: String) {
+    app.roles = vec![];
+    app.role_selected = 0;
+    app.roles_loading = true;
+    match app.client.list_roles(&tenant_id).await {
+        Ok(list) => {
+            app.roles = list;
+            app.clear_status();
+        }
+        Err(e) => app.set_status(format!("Error: {e}")),
+    }
+    app.roles_loading = false;
+}
+
+async fn load_sessions(app: &mut App, tenant_id: String) {
+    app.sessions = vec![];
+    app.session_selected = 0;
+    app.sessions_loading = true;
+    match app.client.list_sessions(&tenant_id).await {
+        Ok(list) => {
+            app.sessions = list;
+            app.clear_status();
+        }
+        Err(e) => app.set_status(format!("Error: {e}")),
+    }
+    app.sessions_loading = false;
+}
+
 async fn check_health(app: &mut App) {
     match app.client.health().await {
         Ok(v) => {
             app.health_status = Some(v["status"].as_str().unwrap_or("ok").to_owned());
-            app.health_version = v["version"].as_str().map(|s| s.to_owned());
             app.health_error = None;
         }
         Err(e) => {
             app.health_status = None;
-            app.health_version = None;
             app.health_error = Some(e.to_string());
         }
     }
@@ -881,6 +1211,34 @@ fn push_quickstart_field(qs: &mut QuickStartState, c: char) {
     }
 }
 
+async fn perform_create_role(app: &mut App, name: String, description: String) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    match app.client.create_role(&tid, &name, &description).await {
+        Ok(_) => {
+            app.set_status(format!("Role '{name}' created"));
+            load_roles(app, tid).await;
+        }
+        Err(e) => app.modal = Modal::Error(format!("{e}")),
+    }
+}
+
+async fn perform_save_user_roles(
+    app: &mut App,
+    user_id: String,
+    entries: Vec<(String, String, bool)>,
+) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let client = app.client.clone();
+    for (role_id, _, assigned) in &entries {
+        if *assigned {
+            let _ = client.assign_user_role(&tid, &user_id, role_id).await;
+        } else {
+            let _ = client.revoke_user_role(&tid, &user_id, role_id).await;
+        }
+    }
+    app.set_status("Roles saved");
+}
+
 async fn perform_edit_client(
     app: &mut App,
     id: String,
@@ -907,13 +1265,169 @@ async fn perform_edit_client(
     }
 }
 
-async fn perform_edit_user(app: &mut App, id: String, is_active: bool) {
+async fn load_permissions(app: &mut App, tenant_id: String) {
+    app.permissions = vec![];
+    app.permission_selected = 0;
+    app.permissions_loading = true;
+    match app.client.list_permissions(&tenant_id).await {
+        Ok(list) => {
+            app.permissions = list;
+            app.clear_status();
+        }
+        Err(e) => app.set_status(format!("Error: {e}")),
+    }
+    app.permissions_loading = false;
+}
+
+/// Eager-load everything needed to open EditUser modal.
+async fn open_edit_user(app: &mut App, user_id: String, email: String, is_active: bool, tid: String) {
+    let client = app.client.clone();
+    // Always fetch fresh from the API so we get current-tenant data regardless of tab cache.
+    let (roles_result, assigned_result) = tokio::join!(
+        client.list_roles(&tid),
+        client.list_user_roles(&tid, &user_id),
+    );
+    let all_roles = roles_result.unwrap_or_default();
+    let assigned_ids: std::collections::HashSet<String> = assigned_result
+        .unwrap_or_default()
+        .iter()
+        .map(|r| r.id.clone())
+        .collect();
+
+    let role_entries: Vec<(String, String, bool)> = all_roles
+        .iter()
+        .map(|r| (r.id.clone(), r.name.clone(), assigned_ids.contains(&r.id)))
+        .collect();
+
+    // Derive permissions from currently assigned roles (eager).
+    let permissions = derive_user_permissions(&role_entries, &tid, &client).await;
+
+    app.modal = Modal::EditUser {
+        id: user_id,
+        email,
+        password: String::new(),
+        is_active,
+        all_roles: role_entries,
+        permissions,
+        field: 0,
+        role_selected: 0,
+    };
+}
+
+/// Derive permission names from currently-assigned roles via fresh API calls.
+async fn derive_user_permissions(
+    role_entries: &[(String, String, bool)],
+    tid: &str,
+    client: &crate::api::Client,
+) -> Vec<String> {
+    let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (role_id, _, assigned) in role_entries {
+        if *assigned {
+            if let Ok(perms) = client.list_role_permissions(tid, role_id).await {
+                for p in perms { names.insert(p.name); }
+            }
+        }
+    }
+    let mut v: Vec<String> = names.into_iter().collect();
+    v.sort();
+    v
+}
+
+/// Eager-load everything needed to open EditRole modal (fresh from API, not cached state).
+async fn open_edit_role(app: &mut App, role_id: String, name: String, description: String, tid: String) {
+    let client = app.client.clone();
+    let (all_perms_result, assigned_result) = tokio::join!(
+        client.list_permissions(&tid),
+        client.list_role_permissions(&tid, &role_id),
+    );
+    let all_perms = all_perms_result.unwrap_or_default();
+    let assigned_ids: std::collections::HashSet<String> = assigned_result
+        .unwrap_or_default()
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    let perm_entries: Vec<(String, String, bool)> = all_perms
+        .iter()
+        .map(|p| (p.id.clone(), p.name.clone(), assigned_ids.contains(&p.id)))
+        .collect();
+    app.modal = Modal::EditRole {
+        id: role_id,
+        name,
+        description,
+        all_permissions: perm_entries,
+        field: 0,
+        perm_selected: 0,
+    };
+}
+
+async fn perform_edit_user(
+    app: &mut App,
+    id: String,
+    email: String,
+    password: Option<String>,
+    is_active: bool,
+    role_entries: Vec<(String, String, bool)>,
+) {
     let Some(tid) = app.active_tenant_id.clone() else { return };
-    match app.client.set_user_active(&tid, &id, is_active).await {
+    let pw = password.as_deref();
+    match app.client.update_user_email(&tid, &id, &email, pw, is_active).await {
+        Ok(_) => {}
+        Err(e) => { app.modal = Modal::Error(format!("{e}")); return; }
+    }
+    // Save role assignments
+    let client = app.client.clone();
+    for (role_id, _, assigned) in &role_entries {
+        if *assigned {
+            let _ = client.assign_user_role(&tid, &id, role_id).await;
+        } else {
+            let _ = client.revoke_user_role(&tid, &id, role_id).await;
+        }
+    }
+    app.set_status("User updated");
+    load_users(app, tid).await;
+}
+
+async fn perform_edit_role(
+    app: &mut App,
+    id: String,
+    name: String,
+    description: String,
+    perm_entries: Vec<(String, String, bool)>,
+) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    match app.client.update_role(&tid, &id, &name, &description).await {
+        Ok(_) => {}
+        Err(e) => { app.modal = Modal::Error(format!("{e}")); return; }
+    }
+    let client = app.client.clone();
+    for (perm_id, _, assigned) in &perm_entries {
+        if *assigned {
+            let _ = client.assign_role_permission(&tid, &id, perm_id).await;
+        } else {
+            let _ = client.revoke_role_permission(&tid, &id, perm_id).await;
+        }
+    }
+    app.set_status("Role updated");
+    load_roles(app, tid).await;
+}
+
+async fn perform_create_permission(app: &mut App, name: String, description: String) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    match app.client.create_permission(&tid, &name, &description).await {
         Ok(_) => {
-            let status = if is_active { "activated" } else { "deactivated" };
-            app.set_status(format!("User {status}"));
-            load_users(app, tid).await;
+            app.set_status(format!("Permission '{name}' created"));
+            load_permissions(app, tid).await;
+        }
+        Err(e) => app.modal = Modal::Error(format!("{e}")),
+    }
+}
+
+async fn perform_edit_permission(app: &mut App, id: String, name: String, description: String) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    match app.client.update_permission(&tid, &id, &name, &description).await {
+        Ok(_) => {
+            app.set_status("Permission updated");
+            load_permissions(app, tid).await;
         }
         Err(e) => app.modal = Modal::Error(format!("{e}")),
     }
@@ -943,6 +1457,32 @@ async fn perform_delete(app: &mut App, id: String) {
                 Err(e) => app.modal = Modal::Error(format!("{e}")),
             }
         }
-        Tab::Health => {}
+        Tab::Roles => {
+            match app.client.delete_role(&tid, &id).await {
+                Ok(_) => {
+                    app.set_status("Role deleted");
+                    load_roles(app, tid).await;
+                }
+                Err(e) => app.modal = Modal::Error(format!("{e}")),
+            }
+        }
+        Tab::Permissions => {
+            match app.client.delete_permission(&tid, &id).await {
+                Ok(_) => {
+                    app.set_status("Permission deleted");
+                    load_permissions(app, tid).await;
+                }
+                Err(e) => app.modal = Modal::Error(format!("{e}")),
+            }
+        }
+        Tab::Sessions => {
+            match app.client.delete_session(&tid, &id).await {
+                Ok(_) => {
+                    app.set_status("Session revoked");
+                    load_sessions(app, tid).await;
+                }
+                Err(e) => app.modal = Modal::Error(format!("{e}")),
+            }
+        }
     }
 }

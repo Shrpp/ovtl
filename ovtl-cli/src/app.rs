@@ -1,11 +1,12 @@
-use crate::api::{Client, OAuthClient, Tenant, User};
+use crate::api::{Client, OAuthClient, Permission, Role, Session, Tenant, User};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
     Login {
         email: String,
         password: String,
-        field: usize,
+        slug: String,   // tenant slug, defaults to "master"
+        field: usize,   // 0=email, 1=password, 2=slug
         error: Option<String>,
     },
     Admin,
@@ -15,7 +16,9 @@ pub enum AppMode {
 pub enum Tab {
     Clients,
     Users,
-    Health,
+    Roles,
+    Permissions,
+    Sessions,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,7 +84,28 @@ pub enum Modal {
     Error(String),
     QuickStart(QuickStartState),
     EditClient { id: String, name: String, redirect_uris: String, scopes: String, field: usize },
-    EditUser { id: String, email: String, is_active: bool },
+    EditUser {
+        id: String,
+        email: String,
+        password: String,
+        is_active: bool,
+        all_roles: Vec<(String, String, bool)>,  // (id, name, assigned)
+        permissions: Vec<String>,                 // derived from assigned roles, read-only
+        field: usize,   // 0=email, 1=password, 2=is_active, 3=roles section
+        role_selected: usize,
+    },
+    CreateRole { name: String, description: String, field: usize },
+    EditRole {
+        id: String,
+        name: String,
+        description: String,
+        all_permissions: Vec<(String, String, bool)>,  // (id, name, assigned)
+        field: usize,      // 0=name, 1=description, 2=permissions section
+        perm_selected: usize,
+    },
+    CreatePermission { name: String, description: String, field: usize },
+    EditPermission { id: String, name: String, description: String, field: usize },
+    UserRoles { user_id: String, email: String, all_roles: Vec<(String, String, bool)>, selected: usize },
 }
 
 pub struct App {
@@ -103,10 +127,21 @@ pub struct App {
     pub user_selected: usize,
     pub users_loading: bool,
 
+    pub sessions: Vec<Session>,
+    pub session_selected: usize,
+    pub sessions_loading: bool,
+
+    pub roles: Vec<Role>,
+    pub role_selected: usize,
+    pub roles_loading: bool,
+
+    pub permissions: Vec<Permission>,
+    pub permission_selected: usize,
+    pub permissions_loading: bool,
+
     pub active_tenant_id: Option<String>,
 
     pub health_status: Option<String>,
-    pub health_version: Option<String>,
     pub health_error: Option<String>,
 
     pub status_msg: Option<String>,
@@ -120,6 +155,7 @@ impl App {
             mode: AppMode::Login {
                 email: String::new(),
                 password: String::new(),
+                slug: String::from("master"),
                 field: 0,
                 error: None,
             },
@@ -139,10 +175,21 @@ impl App {
             user_selected: 0,
             users_loading: false,
 
+            sessions: vec![],
+            session_selected: 0,
+            sessions_loading: false,
+
+            roles: vec![],
+            role_selected: 0,
+            roles_loading: false,
+
+            permissions: vec![],
+            permission_selected: 0,
+            permissions_loading: false,
+
             active_tenant_id: None,
 
             health_status: None,
-            health_version: None,
             health_error: None,
 
             status_msg: None,
@@ -160,6 +207,18 @@ impl App {
 
     pub fn selected_user(&self) -> Option<&User> {
         self.users.get(self.user_selected)
+    }
+
+    pub fn selected_session(&self) -> Option<&Session> {
+        self.sessions.get(self.session_selected)
+    }
+
+    pub fn selected_role(&self) -> Option<&Role> {
+        self.roles.get(self.role_selected)
+    }
+
+    pub fn selected_permission(&self) -> Option<&Permission> {
+        self.permissions.get(self.permission_selected)
     }
 
     pub fn set_status(&mut self, msg: impl Into<String>) {

@@ -8,7 +8,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::{entity::refresh_tokens, error::AppError};
+use crate::{entity::{refresh_tokens, revoked_jtis}, error::AppError};
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct RealmAccess {
+    pub roles: Vec<String>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
@@ -19,12 +26,16 @@ pub struct Claims {
     pub email: String,
     pub iat: i64,
     pub exp: i64,
+    #[serde(default)]
+    pub realm_access: RealmAccess,
 }
 
 pub fn generate_access_token(
     user_id: Uuid,
     tenant_id: Uuid,
     email: &str,
+    roles: Vec<String>,
+    permissions: Vec<String>,
     secret: &str,
     expiration_minutes: i64,
 ) -> Result<String, AppError> {
@@ -36,6 +47,7 @@ pub fn generate_access_token(
         email: email.to_string(),
         iat: now,
         exp: now + expiration_minutes * 60,
+        realm_access: RealmAccess { roles, permissions },
     };
     encode(
         &Header::default(),
@@ -117,6 +129,37 @@ pub async fn revoke_all_user_tokens(
     ))
     .await?;
     Ok(())
+}
+
+pub async fn revoke_jti(
+    db: &DatabaseConnection,
+    jti: &str,
+    expires_at: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<(), AppError> {
+    revoked_jtis::ActiveModel {
+        jti: Set(jti.to_owned()),
+        expires_at: Set(expires_at),
+    }
+    .insert(db)
+    .await
+    .ok(); // ignore conflict if already revoked
+    Ok(())
+}
+
+pub async fn is_jti_revoked(db: &DatabaseConnection, jti: &str) -> Result<bool, AppError> {
+    Ok(revoked_jtis::Entity::find_by_id(jti)
+        .one(db)
+        .await?
+        .is_some())
+}
+
+pub async fn cleanup_expired_jtis(db: &DatabaseConnection) -> Result<u64, AppError> {
+    let now = Utc::now().fixed_offset();
+    let result = revoked_jtis::Entity::delete_many()
+        .filter(revoked_jtis::Column::ExpiresAt.lt(now))
+        .exec(db)
+        .await?;
+    Ok(result.rows_affected)
 }
 
 /// Delete expired refresh tokens across all tenants.

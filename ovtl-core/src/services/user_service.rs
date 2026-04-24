@@ -68,3 +68,35 @@ pub async fn set_active(txn: &DatabaseTransaction, id: Uuid, is_active: bool) ->
     active.update(txn).await?;
     Ok(())
 }
+
+pub async fn update_email(
+    txn: &DatabaseTransaction,
+    id: Uuid,
+    email_encrypted: String,
+    email_lookup: String,
+) -> Result<(), AppError> {
+    let user = users::Entity::find_by_id(id)
+        .one(txn)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut active: users::ActiveModel = user.into();
+    active.email = Set(email_encrypted);
+    active.email_lookup = Set(email_lookup);
+    active.update(txn).await?;
+    Ok(())
+}
+
+pub async fn update_password(
+    txn: &DatabaseTransaction,
+    id: Uuid,
+    password_hash: String,
+) -> Result<(), AppError> {
+    let user = users::Entity::find_by_id(id)
+        .one(txn)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut active: users::ActiveModel = user.into();
+    active.password_hash = Set(password_hash);
+    active.update(txn).await?;
+    Ok(())
+}

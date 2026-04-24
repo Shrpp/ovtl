@@ -15,7 +15,8 @@ use crate::{
     db,
     entity::authorization_codes,
     error::AppError,
-    services::{client_service, tenant_service, token_service, user_service},
+    handlers::logout::get_session_cookie,
+    services::{client_service, permission_service, role_service, session_service, tenant_service, token_service, user_service},
     state::AppState,
 };
 
@@ -38,18 +39,30 @@ pub async fn authorize(
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Extract and validate Bearer token — API-first: user must be pre-authenticated.
-    let bearer = headers
+    // Accept Bearer token (API-first) OR session cookie (browser SSO).
+    let (tenant_id, user_id) = if let Some(bearer) = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or(AppError::Unauthorized)?;
-
-    let claims = token_service::validate_access_token(bearer, &state.config.jwt_secret)?;
-    let tenant_id = Uuid::parse_str(&claims.tid)
-        .map_err(|_| AppError::TokenError("invalid tenant_id in token".into()))?;
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::TokenError("invalid sub in token".into()))?;
+    {
+        let claims = token_service::validate_access_token(bearer, &state.config.jwt_secret)?;
+        if token_service::is_jti_revoked(&state.db, &claims.jti).await? {
+            return Err(AppError::Unauthorized);
+        }
+        let tid = Uuid::parse_str(&claims.tid)
+            .map_err(|_| AppError::TokenError("invalid tid".into()))?;
+        let uid = Uuid::parse_str(&claims.sub)
+            .map_err(|_| AppError::TokenError("invalid sub".into()))?;
+        (tid, uid)
+    } else if let Some(session_id) = get_session_cookie(&headers) {
+        let session = session_service::find_valid(&state.db, &session_id)
+            .await?
+            .ok_or(AppError::Unauthorized)?;
+        let _ = session_service::touch(&state.db, &session_id).await;
+        (session.tenant_id, session.user_id)
+    } else {
+        return Err(AppError::Unauthorized);
+    };
 
     if params.response_type != "code" {
         return Err(AppError::InvalidInput("response_type must be code".into()));
@@ -234,10 +247,19 @@ pub async fn token(
     )?;
 
     // 6. Issue access + refresh tokens.
+    let roles = role_service::list_names_for_user(&txn, user.id)
+        .await
+        .unwrap_or_default();
+    let permissions = permission_service::list_names_for_user(&txn, user.id)
+        .await
+        .unwrap_or_default();
+
     let access_token = token_service::generate_access_token(
         user.id,
         tenant_id,
         &email_plain,
+        roles,
+        permissions,
         &state.config.jwt_secret,
         state.config.jwt_expiration_minutes,
     )?;

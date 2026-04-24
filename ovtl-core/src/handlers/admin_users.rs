@@ -139,8 +139,12 @@ pub async fn create_user(
     ))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct UpdateUserRequest {
+    #[validate(email)]
+    pub email: Option<String>,
+    #[validate(length(min = 8, max = 128))]
+    pub password: Option<String>,
     pub is_active: bool,
 }
 
@@ -153,8 +157,37 @@ pub async fn update_user(
     admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
     let tenant_id = extract_tenant_id(&headers)?;
 
+    payload
+        .validate()
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+
+    let tenant = tenant_service::find_active(&state.db, tenant_id).await?;
+    let tenant_key = hefesto::decrypt(
+        &tenant.encryption_key_encrypted,
+        &state.config.tenant_wrap_key,
+        &state.config.master_encryption_key,
+    )?;
+
     let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;
+
+    if let Some(email) = payload.email {
+        let email_normalized = email.trim().to_lowercase();
+        let email_encrypted = hefesto::encrypt(
+            &email_normalized,
+            &tenant_key,
+            &state.config.master_encryption_key,
+        )?;
+        let email_lookup = hefesto::hash_for_lookup(&email_normalized, &tenant_key)?;
+        user_service::update_email(&txn, id, email_encrypted, email_lookup).await?;
+    }
+
+    if let Some(password) = payload.password {
+        let password_hash = hefesto::hash_password(&password)?;
+        user_service::update_password(&txn, id, password_hash).await?;
+    }
+
     user_service::set_active(&txn, id, payload.is_active).await?;
+
     txn.commit().await?;
 
     Ok(StatusCode::NO_CONTENT)

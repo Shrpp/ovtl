@@ -35,6 +35,10 @@ pub async fn auth_middleware(
 
     let claims = token_service::validate_access_token(token, &state.config.jwt_secret)?;
 
+    if token_service::is_jti_revoked(&state.db, &claims.jti).await? {
+        return Err(AppError::Unauthorized);
+    }
+
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::TokenError("invalid sub".into()))?;
     let token_tenant_id = Uuid::parse_str(&claims.tid)

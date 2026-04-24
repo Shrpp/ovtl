@@ -6,7 +6,7 @@ use crate::{
     entity::users,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::token_service,
+    services::{permission_service, role_service, token_service},
     state::AppState,
 };
 use sea_orm::EntityTrait;
@@ -49,10 +49,19 @@ pub async fn refresh(
         &state.config.master_encryption_key,
     )?;
 
+    let roles = role_service::list_names_for_user(&txn, user.id)
+        .await
+        .unwrap_or_default();
+    let permissions = permission_service::list_names_for_user(&txn, user.id)
+        .await
+        .unwrap_or_default();
+
     let access_token = token_service::generate_access_token(
         user.id,
         ctx.tenant_id,
         &email,
+        roles,
+        permissions,
         &state.config.jwt_secret,
         state.config.jwt_expiration_minutes,
     )?;

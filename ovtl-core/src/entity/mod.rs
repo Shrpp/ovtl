@@ -1,4 +1,9 @@
 pub mod audit_log;
+pub mod permissions;
+pub mod revoked_jtis;
+pub mod role_permissions;
+pub mod roles;
+pub mod user_roles;
 pub mod authorization_codes;
 pub mod login_attempts;
 pub mod oauth_accounts;
