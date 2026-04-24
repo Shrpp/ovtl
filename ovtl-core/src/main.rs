@@ -3,6 +3,7 @@ use migration::{Migrator, MigratorTrait};
 use ovtl_core::{
     config::{self, Environment},
     db,
+    entity::tenants,
     handlers::well_known,
     middleware::{
         auth::auth_middleware,
@@ -13,6 +14,7 @@ use ovtl_core::{
     services::{bootstrap_service, jwk_service::JwkService, lockout_service, token_service},
     state::AppState,
 };
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::json;
 use std::net::SocketAddr;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -56,7 +58,16 @@ async fn main() {
         None => JwkService::generate(),
     };
 
-    let state = AppState::new(db.clone(), config.clone(), jwk);
+    let master_slug = config.bootstrap_tenant_slug.as_deref().unwrap_or("master");
+    let master_tenant_id = tenants::Entity::find()
+        .filter(tenants::Column::Slug.eq(master_slug))
+        .one(&db)
+        .await
+        .ok()
+        .flatten()
+        .map(|t| t.id);
+
+    let state = AppState::new(db.clone(), config.clone(), jwk, master_tenant_id);
 
     // Background cleanup every 6 hours
     tokio::spawn(async move {

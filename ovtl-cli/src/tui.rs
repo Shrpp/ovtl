@@ -7,7 +7,8 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 use crate::{
-    app::{App, Focus, Modal, Tab},
+    api::ApiError,
+    app::{App, AppMode, Focus, Modal, Tab},
     components::{modal, statusbar, table::StatefulTable},
     events::{poll, AppEvent},
     ui,
@@ -23,11 +24,13 @@ pub async fn run(mut app: App) -> io::Result<()> {
     let mut client_table = StatefulTable::new();
     let mut user_table = StatefulTable::new();
 
-    load_tenants(&mut app).await;
-    check_health(&mut app).await;
-
     loop {
         terminal.draw(|frame| {
+            if matches!(&app.mode, AppMode::Login { .. }) {
+                ui::login::render(frame, &app);
+                return;
+            }
+
             let (sidebar, content, header, statusbar_area) = ui::layout::split_areas(frame);
             let (tabs_area, content_body) = ui::layout::split_content(content);
 
@@ -114,7 +117,11 @@ pub async fn run(mut app: App) -> io::Result<()> {
 
         match poll()? {
             Some(AppEvent::Key(key)) => {
-                handle_key(&mut app, key.code, key.modifiers).await;
+                if matches!(&app.mode, AppMode::Login { .. }) {
+                    handle_login_key(&mut app, key.code).await;
+                } else {
+                    handle_key(&mut app, key.code, key.modifiers).await;
+                }
                 if app.should_quit {
                     break;
                 }
@@ -135,8 +142,82 @@ pub async fn run(mut app: App) -> io::Result<()> {
     Ok(())
 }
 
+async fn handle_login_key(app: &mut App, code: KeyCode) {
+    let AppMode::Login {
+        email,
+        password,
+        field,
+        ..
+    } = app.mode.clone()
+    else {
+        return;
+    };
+
+    match code {
+        KeyCode::Char('q') => {
+            app.should_quit = true;
+        }
+        KeyCode::Tab => {
+            app.mode = AppMode::Login {
+                email,
+                password,
+                field: (field + 1) % 2,
+                error: None,
+            };
+        }
+        KeyCode::Backspace => {
+            let (mut e, mut p) = (email, password);
+            if field == 0 {
+                e.pop();
+            } else {
+                p.pop();
+            }
+            app.mode = AppMode::Login { email: e, password: p, field, error: None };
+        }
+        KeyCode::Char(c) => {
+            let (mut e, mut p) = (email, password);
+            if field == 0 {
+                e.push(c);
+            } else {
+                p.push(c);
+            }
+            app.mode = AppMode::Login { email: e, password: p, field, error: None };
+        }
+        KeyCode::Enter => {
+            if email.is_empty() || password.is_empty() {
+                return;
+            }
+            let client = app.client.clone();
+            match client.login(&email, &password).await {
+                Ok(token) => {
+                    app.client.set_token(token);
+                    app.mode = AppMode::Admin;
+                    load_tenants(app).await;
+                    check_health(app).await;
+                }
+                Err(ApiError::Api { status: 401, .. }) => {
+                    app.mode = AppMode::Login {
+                        email,
+                        password,
+                        field,
+                        error: Some("Invalid credentials".to_string()),
+                    };
+                }
+                Err(e) => {
+                    app.mode = AppMode::Login {
+                        email,
+                        password,
+                        field,
+                        error: Some(format!("Error: {e}")),
+                    };
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
-    // Modals take priority
     match app.modal.clone() {
         Modal::ConfirmDelete { id, label: _ } => {
             match code {
@@ -165,11 +246,19 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     }
                 }
                 KeyCode::Backspace => {
-                    if field == 0 { name.pop(); } else { slug.pop(); }
+                    if field == 0 {
+                        name.pop();
+                    } else {
+                        slug.pop();
+                    }
                     app.modal = Modal::CreateTenant { name, slug, field };
                 }
                 KeyCode::Char(c) => {
-                    if field == 0 { name.push(c); } else { slug.push(c); }
+                    if field == 0 {
+                        name.push(c);
+                    } else {
+                        slug.push(c);
+                    }
                     app.modal = Modal::CreateTenant { name, slug, field };
                 }
                 _ => {}
@@ -194,9 +283,15 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                 }
                 KeyCode::Backspace => {
                     match field {
-                        0 => { name.pop(); }
-                        1 => { redirect_uri.pop(); }
-                        _ => { scopes.pop(); }
+                        0 => {
+                            name.pop();
+                        }
+                        1 => {
+                            redirect_uri.pop();
+                        }
+                        _ => {
+                            scopes.pop();
+                        }
                     }
                     app.modal = Modal::CreateClient { name, redirect_uri, scopes, field };
                 }
@@ -228,11 +323,19 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     }
                 }
                 KeyCode::Backspace => {
-                    if field == 0 { email.pop(); } else { password.pop(); }
+                    if field == 0 {
+                        email.pop();
+                    } else {
+                        password.pop();
+                    }
                     app.modal = Modal::CreateUser { email, password, field };
                 }
                 KeyCode::Char(c) => {
-                    if field == 0 { email.push(c); } else { password.push(c); }
+                    if field == 0 {
+                        email.push(c);
+                    } else {
+                        password.push(c);
+                    }
                     app.modal = Modal::CreateUser { email, password, field };
                 }
                 _ => {}
@@ -242,7 +345,6 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
         Modal::None => {}
     }
 
-    // q always quits
     if code == KeyCode::Char('q') {
         app.should_quit = true;
         return;
@@ -279,7 +381,6 @@ async fn handle_sidebar_key(app: &mut App, code: KeyCode) {
             }
         }
         KeyCode::Tab => {
-            // Tab from sidebar moves focus to content without reloading
             if app.active_tenant_id.is_some() {
                 app.focus = Focus::Content;
             }
@@ -311,10 +412,14 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
         }
         KeyCode::Up => match app.tab {
             Tab::Clients => {
-                if app.client_selected > 0 { app.client_selected -= 1; }
+                if app.client_selected > 0 {
+                    app.client_selected -= 1;
+                }
             }
             Tab::Users => {
-                if app.user_selected > 0 { app.user_selected -= 1; }
+                if app.user_selected > 0 {
+                    app.user_selected -= 1;
+                }
             }
             Tab::Health => {}
         },
@@ -455,13 +560,30 @@ async fn perform_create_tenant(app: &mut App, name: String, slug: String) {
     }
 }
 
-async fn perform_create_client(app: &mut App, name: String, redirect_uri: String, scopes_str: String) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
-    let scopes: Vec<String> = scopes_str.split_whitespace().map(|s| s.to_owned()).collect();
-    match app.client.create_client(&tid, &name, vec![redirect_uri], scopes).await {
+async fn perform_create_client(
+    app: &mut App,
+    name: String,
+    redirect_uri: String,
+    scopes_str: String,
+) {
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
+    let scopes: Vec<String> = scopes_str
+        .split_whitespace()
+        .map(|s| s.to_owned())
+        .collect();
+    match app
+        .client
+        .create_client(&tid, &name, vec![redirect_uri], scopes)
+        .await
+    {
         Ok(c) => {
             if let Some(secret) = c.client_secret {
-                app.modal = Modal::ShowSecret { client_id: c.client_id, secret };
+                app.modal = Modal::ShowSecret {
+                    client_id: c.client_id,
+                    secret,
+                };
             } else {
                 app.set_status(format!("Client '{name}' created"));
             }
@@ -472,7 +594,9 @@ async fn perform_create_client(app: &mut App, name: String, redirect_uri: String
 }
 
 async fn perform_create_user(app: &mut App, email: String, password: String) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     match app.client.create_user(&tid, &email, &password).await {
         Ok(_) => {
             app.set_status(format!("User '{email}' created"));
@@ -484,7 +608,9 @@ async fn perform_create_user(app: &mut App, email: String, password: String) {
 
 async fn perform_delete(app: &mut App, id: String) {
     app.modal = Modal::None;
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     match app.tab {
         Tab::Clients => {
             match app.client.deactivate_client(&tid, &id).await {

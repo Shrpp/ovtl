@@ -11,23 +11,10 @@ use validator::Validate;
 use crate::{
     db,
     error::AppError,
+    handlers::admin_auth,
     services::{tenant_service, user_service},
     state::AppState,
 };
-
-fn require_admin_key(headers: &HeaderMap, expected: &Option<String>) -> Result<(), AppError> {
-    let Some(key) = expected else {
-        return Err(AppError::NotFound);
-    };
-    let provided = headers
-        .get("x-ovtl-admin-key")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if provided != key {
-        return Err(AppError::Unauthorized);
-    }
-    Ok(())
-}
 
 fn extract_tenant_id(headers: &HeaderMap) -> Result<Uuid, AppError> {
     headers
@@ -57,7 +44,7 @@ pub async fn list_users(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin_key(&headers, &state.config.admin_key)?;
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
     let tenant_id = extract_tenant_id(&headers)?;
 
     let tenant = tenant_service::find_active(&state.db, tenant_id).await?;
@@ -97,7 +84,7 @@ pub async fn create_user(
     headers: HeaderMap,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin_key(&headers, &state.config.admin_key)?;
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
     let tenant_id = extract_tenant_id(&headers)?;
 
     payload
@@ -157,7 +144,7 @@ pub async fn deactivate_user(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin_key(&headers, &state.config.admin_key)?;
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
     let tenant_id = extract_tenant_id(&headers)?;
 
     let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;

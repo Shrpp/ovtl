@@ -1,3 +1,4 @@
+pub mod admin_auth;
 pub mod admin_users;
 pub mod clients;
 pub mod login;

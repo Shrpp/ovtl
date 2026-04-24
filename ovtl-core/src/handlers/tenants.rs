@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{entity::tenants, error::AppError, state::AppState};
+use crate::{entity::tenants, error::AppError, handlers::admin_auth, state::AppState};
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateTenantRequest {
@@ -26,20 +26,6 @@ pub struct TenantResponse {
     pub slug: String,
     pub plan: String,
     pub created_at: String,
-}
-
-fn require_admin_key(headers: &HeaderMap, expected: &Option<String>) -> Result<(), AppError> {
-    let Some(key) = expected else {
-        return Err(AppError::NotFound);
-    };
-    let provided = headers
-        .get("x-ovtl-admin-key")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if provided != key {
-        return Err(AppError::Unauthorized);
-    }
-    Ok(())
 }
 
 fn validate_slug(slug: &str) -> Result<(), AppError> {
@@ -62,7 +48,7 @@ pub async fn create_tenant(
     headers: HeaderMap,
     Json(payload): Json<CreateTenantRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin_key(&headers, &state.config.admin_key)?;
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
 
     payload
         .validate()
@@ -115,7 +101,7 @@ pub async fn list_tenants(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin_key(&headers, &state.config.admin_key)?;
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
 
     let tenants = tenants::Entity::find().all(&state.db).await?;
     let response: Vec<TenantResponse> = tenants

@@ -7,8 +7,6 @@ pub enum ApiError {
     Http(#[from] reqwest::Error),
     #[error("API error {status}: {message}")]
     Api { status: u16, message: String },
-    #[error("Not configured")]
-    NotConfigured,
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -17,32 +15,38 @@ pub type ApiResult<T> = Result<T, ApiError>;
 pub struct Client {
     inner: reqwest::Client,
     pub base_url: String,
-    pub admin_key: String,
+    token: Option<String>,
 }
 
 impl Client {
-    pub fn new(base_url: String, admin_key: String) -> Self {
+    pub fn new(base_url: String) -> Self {
         Self {
             inner: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(10))
                 .build()
                 .unwrap(),
             base_url,
-            admin_key,
+            token: None,
         }
     }
 
-    fn admin_headers(&self) -> reqwest::header::HeaderMap {
+    pub fn set_token(&mut self, token: String) {
+        self.token = Some(token);
+    }
+
+    fn auth_headers(&self) -> reqwest::header::HeaderMap {
         let mut map = reqwest::header::HeaderMap::new();
-        map.insert(
-            "x-ovtl-admin-key",
-            self.admin_key.parse().unwrap(),
-        );
+        if let Some(token) = &self.token {
+            map.insert(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {token}").parse().unwrap(),
+            );
+        }
         map
     }
 
     fn tenant_headers(&self, tenant_id: &str) -> reqwest::header::HeaderMap {
-        let mut map = self.admin_headers();
+        let mut map = self.auth_headers();
         map.insert("x-ovtl-tenant-id", tenant_id.parse().unwrap());
         map
     }
@@ -68,13 +72,31 @@ impl Client {
         }
     }
 
-    // ── Tenants ──────────────────────────────────────────────────────────────
+    // ── Auth ──────────────────────────────────────────────────────────────────
+
+    pub async fn login(&self, email: &str, password: &str) -> ApiResult<String> {
+        #[derive(Deserialize)]
+        struct LoginResp {
+            access_token: String,
+        }
+        let resp = self
+            .inner
+            .post(format!("{}/auth/login", self.base_url))
+            .header("x-ovtl-tenant-slug", "master")
+            .json(&serde_json::json!({ "email": email, "password": password }))
+            .send()
+            .await?;
+        let body: LoginResp = self.check(resp).await?;
+        Ok(body.access_token)
+    }
+
+    // ── Tenants ───────────────────────────────────────────────────────────────
 
     pub async fn list_tenants(&self) -> ApiResult<Vec<Tenant>> {
         let resp = self
             .inner
             .get(format!("{}/tenants", self.base_url))
-            .headers(self.admin_headers())
+            .headers(self.auth_headers())
             .send()
             .await?;
         self.check(resp).await
@@ -84,7 +106,7 @@ impl Client {
         let resp = self
             .inner
             .post(format!("{}/tenants", self.base_url))
-            .headers(self.admin_headers())
+            .headers(self.auth_headers())
             .json(&serde_json::json!({ "name": name, "slug": slug }))
             .send()
             .await?;

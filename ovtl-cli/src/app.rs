@@ -1,6 +1,17 @@
 use crate::api::{Client, OAuthClient, Tenant, User};
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AppMode {
+    Login {
+        email: String,
+        password: String,
+        field: usize,
+        error: Option<String>,
+    },
+    Admin,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Tab {
     Clients,
     Users,
@@ -26,6 +37,7 @@ pub enum Modal {
 
 pub struct App {
     pub client: Client,
+    pub mode: AppMode,
     pub focus: Focus,
     pub tab: Tab,
     pub modal: Modal,
@@ -56,6 +68,12 @@ impl App {
     pub fn new(client: Client) -> Self {
         Self {
             client,
+            mode: AppMode::Login {
+                email: String::new(),
+                password: String::new(),
+                field: 0,
+                error: None,
+            },
             focus: Focus::Sidebar,
             tab: Tab::Clients,
             modal: Modal::None,

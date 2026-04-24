@@ -4,7 +4,6 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CliConfig {
     pub url: Option<String>,
-    pub admin_key: Option<String>,
 }
 
 pub fn config_path() -> PathBuf {

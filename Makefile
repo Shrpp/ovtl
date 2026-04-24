@@ -25,8 +25,7 @@ migrate:
 cli:
 	@command -v cargo >/dev/null || { echo "cargo not found"; exit 1; }
 	cargo run -p ovtl-cli -- \
-		--url $${OVTL_URL:-http://localhost:3000} \
-		--key $${OVTL_ADMIN_KEY:-dev-admin-key}
+		--url $${OVTL_URL:-http://localhost:3000}
 
 test-oidc:
 	@bash scripts/test-oidc.sh
