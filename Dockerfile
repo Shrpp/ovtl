@@ -1,5 +1,5 @@
 # ─── Stage 1: Builder ────────────────────────────────────────────────────────
-FROM rust:1.82-slim AS builder
+FROM rust:1.88-slim AS builder
 
 RUN apt-get update \
  && apt-get install -y pkg-config libssl-dev \
@@ -11,14 +11,16 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY ovtl-core/Cargo.toml ovtl-core/
 COPY ovtl-core/migration/Cargo.toml ovtl-core/migration/
+COPY ovtl-cli/Cargo.toml ovtl-cli/
 
 # Dummy source files — just enough for cargo to resolve and compile all deps.
-RUN mkdir -p ovtl-core/src ovtl-core/migration/src \
+RUN mkdir -p ovtl-core/src ovtl-core/migration/src ovtl-cli/src \
  && printf 'fn main() {}\n' > ovtl-core/src/main.rs \
  && printf '// placeholder\n' > ovtl-core/src/lib.rs \
  && printf 'fn main() {}\n' > ovtl-core/migration/src/main.rs \
  && printf 'pub use sea_orm_migration::prelude::*;\npub struct Migrator;\n' \
-      > ovtl-core/migration/src/lib.rs
+      > ovtl-core/migration/src/lib.rs \
+ && printf 'fn main() {}\n' > ovtl-cli/src/main.rs
 
 # Compile dependencies only (this layer is cached unless Cargo.toml/lock changes).
 RUN cargo build --release --bin ovtl-core
