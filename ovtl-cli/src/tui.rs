@@ -1321,11 +1321,12 @@ fn push_quickstart_field(qs: &mut QuickStartState, c: char) {
 }
 
 async fn perform_create_role(app: &mut App, name: String, description: String) {
-    let Some(_tid) = app.active_tenant_id.clone() else { return };
-    match app.client.create_role(&_tid, &name, &description).await {
-        Ok(_) => {
-            app.set_status(format!("Role '{name}' created"));
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    match app.client.create_role(&tid, &name, &description).await {
+        Ok(role) => {
+            app.set_status(format!("Role '{}' created — assign permissions below", role.name));
             load_all(app).await;
+            open_edit_role(app, role.id, role.name, role.description, tid).await;
         }
         Err(e) => app.modal = Modal::Error(format!("{e}")),
     }

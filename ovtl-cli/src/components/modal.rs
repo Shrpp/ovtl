@@ -240,7 +240,7 @@ pub fn render_edit_role(
     perm_selected: usize,
 ) {
     let perms_visible = all_permissions.len().min(6).max(1) as u16;
-    let height = 3 + 3 + 1 + perms_visible + 2;
+    let height = 3 + 3 + 1 + perms_visible + 1 + 1 + 2; // name+desc+header+perms+spacer+hints+borders
     let area = centered_rect(60, height, frame.area());
     frame.render_widget(Clear, area);
 
