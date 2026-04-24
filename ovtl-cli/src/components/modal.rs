@@ -90,6 +90,56 @@ pub fn render_secret(frame: &mut Frame, client_id: &str, secret: &str) {
     frame.render_widget(para, area);
 }
 
+pub fn render_edit_user(frame: &mut Frame, email: &str, is_active: bool) {
+    let area = centered_rect(56, 10, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Edit User ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, area);
+
+    let inner = Rect { x: area.x + 2, y: area.y + 1, width: area.width - 4, height: area.height - 2 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Email   ", Style::default().fg(Color::DarkGray)),
+            Span::raw(email),
+        ])),
+        chunks[0],
+    );
+
+    let status_color = if is_active { Color::Green } else { Color::Red };
+    let status_text = if is_active { "● active" } else { "○ inactive" };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Status  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(status_text, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+            Span::styled("   Space → toggle", Style::default().fg(Color::DarkGray)),
+        ])),
+        chunks[1],
+    );
+
+    let hints = Line::from(vec![
+        Span::styled("Enter", Style::default().fg(Color::Cyan)),
+        Span::styled(" Save   ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Esc", Style::default().fg(Color::Cyan)),
+        Span::styled(" Cancel", Style::default().fg(Color::DarkGray)),
+    ]);
+    frame.render_widget(Paragraph::new(hints).alignment(Alignment::Center), chunks[4]);
+}
+
 /// Render a simple form modal with labelled fields.
 /// `fields`: list of (label, value) pairs.
 /// `active_field`: index of the currently focused input.

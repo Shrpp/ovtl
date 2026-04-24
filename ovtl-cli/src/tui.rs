@@ -1,3 +1,4 @@
+use arboard;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, KeyCode, KeyModifiers},
     execute,
@@ -8,7 +9,7 @@ use std::io;
 
 use crate::{
     api::ApiError,
-    app::{App, AppMode, Focus, Modal, Tab},
+    app::{App, AppMode, Focus, Modal, QuickStartState, Tab},
     components::{modal, statusbar, table::StatefulTable},
     events::{poll, AppEvent},
     ui,
@@ -58,6 +59,7 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         ("Tab", "Next tab"),
                         ("↑↓", "Navigate"),
                         ("n", "New"),
+                        ("e", "Edit"),
                         ("d", "Delete"),
                         ("r", "Refresh"),
                         ("q", "Quit"),
@@ -67,6 +69,7 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         ("Tab", "Next tab"),
                         ("↑↓", "Navigate"),
                         ("n", "New"),
+                        ("e", "Edit"),
                         ("d", "Deactivate"),
                         ("r", "Refresh"),
                         ("q", "Quit"),
@@ -111,6 +114,20 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         &[("Email", email), ("Password", password)],
                         *field,
                     );
+                }
+                Modal::QuickStart(_) => {
+                    ui::quickstart::render(frame, &app);
+                }
+                Modal::EditClient { name, redirect_uris, scopes, field, .. } => {
+                    modal::render_form(
+                        frame,
+                        "Edit Client",
+                        &[("Name", name), ("Redirect URIs", redirect_uris), ("Scopes", scopes)],
+                        *field,
+                    );
+                }
+                Modal::EditUser { email, is_active, .. } => {
+                    modal::render_edit_user(frame, email, *is_active);
                 }
             }
         })?;
@@ -194,6 +211,12 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                     app.mode = AppMode::Admin;
                     load_tenants(app).await;
                     check_health(app).await;
+                    // Auto-open wizard if only the master tenant exists
+                    let only_master = app.tenants.len() <= 1
+                        && app.tenants.iter().all(|t| t.slug == "master");
+                    if only_master {
+                        app.modal = Modal::QuickStart(QuickStartState::default());
+                    }
                 }
                 Err(ApiError::Api { status: 401, .. }) => {
                     app.mode = AppMode::Login {
@@ -342,11 +365,73 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
             }
             return;
         }
+        Modal::EditClient { mut name, mut redirect_uris, mut scopes, mut field, id } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Tab => {
+                    field = (field + 1) % 3;
+                    app.modal = Modal::EditClient { id, name, redirect_uris, scopes, field };
+                }
+                KeyCode::Enter => {
+                    if !name.is_empty() {
+                        let id2 = id.clone();
+                        let n = name.clone();
+                        let ru = redirect_uris.clone();
+                        let sc = scopes.clone();
+                        app.modal = Modal::None;
+                        perform_edit_client(app, id2, n, ru, sc).await;
+                    }
+                }
+                KeyCode::Backspace => {
+                    match field {
+                        0 => { name.pop(); }
+                        1 => { redirect_uris.pop(); }
+                        _ => { scopes.pop(); }
+                    }
+                    app.modal = Modal::EditClient { id, name, redirect_uris, scopes, field };
+                }
+                KeyCode::Char(c) => {
+                    match field {
+                        0 => name.push(c),
+                        1 => redirect_uris.push(c),
+                        _ => scopes.push(c),
+                    }
+                    app.modal = Modal::EditClient { id, name, redirect_uris, scopes, field };
+                }
+                _ => {}
+            }
+            return;
+        }
+        Modal::EditUser { id, email, mut is_active } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Char(' ') => {
+                    is_active = !is_active;
+                    app.modal = Modal::EditUser { id, email, is_active };
+                }
+                KeyCode::Enter => {
+                    let id2 = id.clone();
+                    app.modal = Modal::None;
+                    perform_edit_user(app, id2, is_active).await;
+                }
+                _ => {}
+            }
+            return;
+        }
+        Modal::QuickStart(_) => {
+            handle_quickstart_key(app, code).await;
+            return;
+        }
         Modal::None => {}
     }
 
     if code == KeyCode::Char('q') {
         app.should_quit = true;
+        return;
+    }
+
+    if code == KeyCode::Char('?') {
+        app.modal = Modal::QuickStart(QuickStartState::default());
         return;
     }
 
@@ -371,6 +456,13 @@ async fn handle_sidebar_key(app: &mut App, code: KeyCode) {
         KeyCode::Enter | KeyCode::Right => {
             if let Some(t) = app.selected_tenant() {
                 let tid = t.id.clone();
+                let switching_tenant = app.active_tenant_id.as_deref() != Some(&tid);
+                if switching_tenant {
+                    app.clients = vec![];
+                    app.users = vec![];
+                    app.client_selected = 0;
+                    app.user_selected = 0;
+                }
                 app.active_tenant_id = Some(tid.clone());
                 app.focus = Focus::Content;
                 match app.tab {
@@ -458,6 +550,29 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
             }
             Tab::Health => {}
         },
+        KeyCode::Char('e') => match app.tab {
+            Tab::Clients => {
+                if let Some(c) = app.selected_client() {
+                    app.modal = Modal::EditClient {
+                        id: c.id.clone(),
+                        name: c.name.clone(),
+                        redirect_uris: c.redirect_uris.join(", "),
+                        scopes: c.scopes.join(" "),
+                        field: 0,
+                    };
+                }
+            }
+            Tab::Users => {
+                if let Some(u) = app.selected_user() {
+                    app.modal = Modal::EditUser {
+                        id: u.id.clone(),
+                        email: u.email.clone(),
+                        is_active: u.is_active,
+                    };
+                }
+            }
+            Tab::Health => {}
+        },
         KeyCode::Char('d') => match app.tab {
             Tab::Clients => {
                 if let Some(c) = app.selected_client() {
@@ -510,11 +625,12 @@ async fn load_tenants(app: &mut App) {
 }
 
 async fn load_clients(app: &mut App, tenant_id: String) {
+    app.clients = vec![];
+    app.client_selected = 0;
     app.clients_loading = true;
     match app.client.list_clients(&tenant_id).await {
         Ok(list) => {
             app.clients = list;
-            app.client_selected = app.client_selected.min(app.clients.len().saturating_sub(1));
             app.clear_status();
         }
         Err(e) => app.set_status(format!("Error: {e}")),
@@ -523,11 +639,12 @@ async fn load_clients(app: &mut App, tenant_id: String) {
 }
 
 async fn load_users(app: &mut App, tenant_id: String) {
+    app.users = vec![];
+    app.user_selected = 0;
     app.users_loading = true;
     match app.client.list_users(&tenant_id).await {
         Ok(list) => {
             app.users = list;
-            app.user_selected = app.user_selected.min(app.users.len().saturating_sub(1));
             app.clear_status();
         }
         Err(e) => app.set_status(format!("Error: {e}")),
@@ -600,6 +717,202 @@ async fn perform_create_user(app: &mut App, email: String, password: String) {
     match app.client.create_user(&tid, &email, &password).await {
         Ok(_) => {
             app.set_status(format!("User '{email}' created"));
+            load_users(app, tid).await;
+        }
+        Err(e) => app.modal = Modal::Error(format!("{e}")),
+    }
+}
+
+fn copy_to_clipboard(app: &mut App, text: &str, success_msg: &str) {
+    match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(text)) {
+        Ok(_) => app.set_status(success_msg.to_string()),
+        Err(_) => app.set_status("clipboard unavailable".to_string()),
+    }
+}
+
+async fn handle_quickstart_key(app: &mut App, code: KeyCode) {
+    let Modal::QuickStart(mut qs) = app.modal.clone() else {
+        return;
+    };
+
+    if qs.step == 4 {
+        match code {
+            KeyCode::Char('c') => {
+                qs.show_secret = !qs.show_secret;
+                app.modal = Modal::QuickStart(qs);
+            }
+            KeyCode::Char('i') => {
+                if let Some(cid) = &qs.created_client_id.clone() {
+                    copy_to_clipboard(app, cid, "client_id copied");
+                }
+                app.modal = Modal::QuickStart(qs);
+            }
+            KeyCode::Char('s') => {
+                if let Some(secret) = &qs.created_secret.clone() {
+                    copy_to_clipboard(app, secret, "secret copied");
+                }
+                app.modal = Modal::QuickStart(qs);
+            }
+            KeyCode::Enter | KeyCode::Esc => {
+                app.modal = Modal::None;
+                load_tenants(app).await;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    let max_fields: usize = match qs.step {
+        2 => 3,
+        _ => 2,
+    };
+
+    match code {
+        KeyCode::Esc => {
+            app.modal = Modal::None;
+        }
+        KeyCode::Tab => {
+            qs.field = (qs.field + 1) % max_fields;
+            qs.error = None;
+            app.modal = Modal::QuickStart(qs);
+        }
+        KeyCode::Backspace => {
+            pop_quickstart_field(&mut qs);
+            app.modal = Modal::QuickStart(qs);
+        }
+        KeyCode::Char(c) => {
+            push_quickstart_field(&mut qs, c);
+            app.modal = Modal::QuickStart(qs);
+        }
+        KeyCode::Enter => {
+            qs.error = None;
+            let client = app.client.clone();
+            match qs.step {
+                1 => {
+                    if qs.tenant_name.is_empty() || qs.tenant_slug.is_empty() {
+                        qs.error = Some("Name and Slug are required".to_string());
+                        app.modal = Modal::QuickStart(qs);
+                        return;
+                    }
+                    match client.create_tenant(&qs.tenant_name.clone(), &qs.tenant_slug.clone()).await {
+                        Ok(t) => {
+                            qs.created_tenant_id = Some(t.id);
+                            qs.created_tenant_name = Some(qs.tenant_name.clone());
+                            qs.step = 2;
+                            qs.field = 0;
+                            app.modal = Modal::QuickStart(qs);
+                        }
+                        Err(e) => {
+                            qs.error = Some(format!("{e}"));
+                            app.modal = Modal::QuickStart(qs);
+                        }
+                    }
+                }
+                2 => {
+                    if qs.client_name.is_empty() || qs.redirect_uri.is_empty() {
+                        qs.error = Some("Name and Redirect URI are required".to_string());
+                        app.modal = Modal::QuickStart(qs);
+                        return;
+                    }
+                    let Some(tid) = qs.created_tenant_id.clone() else { return };
+                    let scopes: Vec<String> = qs.scopes.split_whitespace().map(|s| s.to_owned()).collect();
+                    match client.create_client(&tid, &qs.client_name.clone(), vec![qs.redirect_uri.clone()], scopes).await {
+                        Ok(c) => {
+                            qs.created_client_id = Some(c.client_id);
+                            qs.created_secret = c.client_secret;
+                            qs.step = 3;
+                            qs.field = 0;
+                            app.modal = Modal::QuickStart(qs);
+                        }
+                        Err(e) => {
+                            qs.error = Some(format!("{e}"));
+                            app.modal = Modal::QuickStart(qs);
+                        }
+                    }
+                }
+                3 => {
+                    if qs.user_email.is_empty() || qs.user_password.is_empty() {
+                        qs.error = Some("Email and Password are required".to_string());
+                        app.modal = Modal::QuickStart(qs);
+                        return;
+                    }
+                    let Some(tid) = qs.created_tenant_id.clone() else { return };
+                    match client.create_user(&tid, &qs.user_email.clone(), &qs.user_password.clone()).await {
+                        Ok(_) => {
+                            qs.step = 4;
+                            app.modal = Modal::QuickStart(qs);
+                        }
+                        Err(e) => {
+                            qs.error = Some(format!("{e}"));
+                            app.modal = Modal::QuickStart(qs);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+}
+
+fn pop_quickstart_field(qs: &mut QuickStartState) {
+    match (qs.step, qs.field) {
+        (1, 0) => { qs.tenant_name.pop(); }
+        (1, 1) => { qs.tenant_slug.pop(); }
+        (2, 0) => { qs.client_name.pop(); }
+        (2, 1) => { qs.redirect_uri.pop(); }
+        (2, 2) => { qs.scopes.pop(); }
+        (3, 0) => { qs.user_email.pop(); }
+        (3, 1) => { qs.user_password.pop(); }
+        _ => {}
+    }
+}
+
+fn push_quickstart_field(qs: &mut QuickStartState, c: char) {
+    match (qs.step, qs.field) {
+        (1, 0) => qs.tenant_name.push(c),
+        (1, 1) => qs.tenant_slug.push(c),
+        (2, 0) => qs.client_name.push(c),
+        (2, 1) => qs.redirect_uri.push(c),
+        (2, 2) => qs.scopes.push(c),
+        (3, 0) => qs.user_email.push(c),
+        (3, 1) => qs.user_password.push(c),
+        _ => {}
+    }
+}
+
+async fn perform_edit_client(
+    app: &mut App,
+    id: String,
+    name: String,
+    redirect_uris_str: String,
+    scopes_str: String,
+) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let redirect_uris: Vec<String> = redirect_uris_str
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let scopes: Vec<String> = scopes_str
+        .split_whitespace()
+        .map(|s| s.to_owned())
+        .collect();
+    match app.client.update_client(&tid, &id, &name, redirect_uris, scopes).await {
+        Ok(_) => {
+            app.set_status(format!("Client '{name}' updated"));
+            load_clients(app, tid).await;
+        }
+        Err(e) => app.modal = Modal::Error(format!("{e}")),
+    }
+}
+
+async fn perform_edit_user(app: &mut App, id: String, is_active: bool) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    match app.client.set_user_active(&tid, &id, is_active).await {
+        Ok(_) => {
+            let status = if is_active { "activated" } else { "deactivated" };
+            app.set_status(format!("User {status}"));
             load_users(app, tid).await;
         }
         Err(e) => app.modal = Modal::Error(format!("{e}")),

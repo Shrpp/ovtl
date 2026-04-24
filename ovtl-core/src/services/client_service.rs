@@ -64,6 +64,28 @@ pub async fn list(txn: &DatabaseTransaction) -> Result<Vec<oauth_clients::Model>
     Ok(oauth_clients::Entity::find().all(txn).await?)
 }
 
+pub struct UpdateClientInput {
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    pub scopes: Vec<String>,
+}
+
+pub async fn update(
+    txn: &DatabaseTransaction,
+    id: Uuid,
+    input: UpdateClientInput,
+) -> Result<oauth_clients::Model, AppError> {
+    let model = oauth_clients::Entity::find_by_id(id)
+        .one(txn)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut active: oauth_clients::ActiveModel = model.into();
+    active.name = Set(input.name);
+    active.redirect_uris = Set(serde_json::json!(input.redirect_uris));
+    active.scopes = Set(serde_json::json!(input.scopes));
+    Ok(active.update(txn).await?)
+}
+
 pub async fn deactivate(txn: &DatabaseTransaction, id: Uuid) -> Result<(), AppError> {
     let model = oauth_clients::Entity::find_by_id(id)
         .one(txn)

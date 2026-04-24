@@ -25,6 +25,52 @@ pub enum Focus {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct QuickStartState {
+    pub step: u8,
+    // Step 1 — tenant
+    pub tenant_name: String,
+    pub tenant_slug: String,
+    // Step 2 — client
+    pub client_name: String,
+    pub redirect_uri: String,
+    pub scopes: String,
+    // Step 3 — user
+    pub user_email: String,
+    pub user_password: String,
+    // Results stored after each API call
+    pub created_tenant_id: Option<String>,
+    pub created_tenant_name: Option<String>,
+    pub created_client_id: Option<String>,
+    pub created_secret: Option<String>,
+    pub show_secret: bool,
+    // Active input field index within the current step
+    pub field: usize,
+    pub error: Option<String>,
+}
+
+impl Default for QuickStartState {
+    fn default() -> Self {
+        Self {
+            step: 1,
+            tenant_name: String::new(),
+            tenant_slug: String::new(),
+            client_name: String::new(),
+            redirect_uri: String::from("http://localhost:8080/callback"),
+            scopes: String::from("openid email profile"),
+            user_email: String::new(),
+            user_password: String::new(),
+            created_tenant_id: None,
+            created_tenant_name: None,
+            created_client_id: None,
+            created_secret: None,
+            show_secret: false,
+            field: 0,
+            error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Modal {
     None,
     CreateTenant { name: String, slug: String, field: usize },
@@ -33,6 +79,9 @@ pub enum Modal {
     ConfirmDelete { id: String, label: String },
     ShowSecret { client_id: String, secret: String },
     Error(String),
+    QuickStart(QuickStartState),
+    EditClient { id: String, name: String, redirect_uris: String, scopes: String, field: usize },
+    EditUser { id: String, email: String, is_active: bool },
 }
 
 pub struct App {

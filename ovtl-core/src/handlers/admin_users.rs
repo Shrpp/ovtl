@@ -139,6 +139,27 @@ pub async fn create_user(
     ))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateUserRequest {
+    pub is_active: bool,
+}
+
+pub async fn update_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<UpdateUserRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
+    let tenant_id = extract_tenant_id(&headers)?;
+
+    let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;
+    user_service::set_active(&txn, id, payload.is_active).await?;
+    txn.commit().await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn deactivate_user(
     State(state): State<AppState>,
     headers: HeaderMap,

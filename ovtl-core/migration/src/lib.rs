@@ -8,6 +8,7 @@ mod m20240101_000005_security_hardening;
 mod m20240101_000006_oauth_clients;
 mod m20240101_000007_authorization_codes;
 mod m20240101_000008_sessions;
+mod m20240101_000009_fix_rls_force;
 
 pub struct Migrator;
 
@@ -23,6 +24,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20240101_000006_oauth_clients::Migration),
             Box::new(m20240101_000007_authorization_codes::Migration),
             Box::new(m20240101_000008_sessions::Migration),
+            Box::new(m20240101_000009_fix_rls_force::Migration),
         ]
     }
 }

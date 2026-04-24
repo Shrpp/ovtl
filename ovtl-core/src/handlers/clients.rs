@@ -133,6 +133,54 @@ pub async fn list_clients(
     Ok(Json(response))
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateClientRequest {
+    #[validate(length(min = 1, max = 100))]
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    pub scopes: Option<Vec<String>>,
+}
+
+pub async fn update_client(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<UpdateClientRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
+    let tenant_id = extract_tenant_id(&headers)?;
+
+    payload.validate().map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    if payload.redirect_uris.is_empty() {
+        return Err(AppError::InvalidInput("redirect_uris must not be empty".into()));
+    }
+
+    let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;
+    let model = client_service::update(
+        &txn,
+        id,
+        client_service::UpdateClientInput {
+            name: payload.name,
+            redirect_uris: payload.redirect_uris,
+            scopes: payload.scopes.unwrap_or_else(|| vec!["openid".into(), "email".into(), "profile".into()]),
+        },
+    ).await?;
+    txn.commit().await?;
+
+    Ok(Json(ClientResponse {
+        id: model.id.to_string(),
+        client_id: model.client_id,
+        client_secret: None,
+        name: model.name,
+        redirect_uris: client_service::scopes_to_vec(&model.redirect_uris),
+        scopes: client_service::scopes_to_vec(&model.scopes),
+        grant_types: client_service::scopes_to_vec(&model.grant_types),
+        is_confidential: model.is_confidential,
+        is_active: model.is_active,
+        created_at: model.created_at.to_rfc3339(),
+    }))
+}
+
 pub async fn deactivate_client(
     State(state): State<AppState>,
     headers: HeaderMap,

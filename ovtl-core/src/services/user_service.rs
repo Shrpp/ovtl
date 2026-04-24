@@ -54,17 +54,17 @@ pub async fn list_all(
     Ok(users::Entity::find().all(txn).await?)
 }
 
-pub async fn deactivate(
-    txn: &DatabaseTransaction,
-    id: Uuid,
-) -> Result<(), AppError> {
-    use sea_orm::Set;
+pub async fn deactivate(txn: &DatabaseTransaction, id: Uuid) -> Result<(), AppError> {
+    set_active(txn, id, false).await
+}
+
+pub async fn set_active(txn: &DatabaseTransaction, id: Uuid, is_active: bool) -> Result<(), AppError> {
     let user = users::Entity::find_by_id(id)
         .one(txn)
         .await?
         .ok_or(AppError::NotFound)?;
     let mut active: users::ActiveModel = user.into();
-    active.is_active = Set(false);
+    active.is_active = Set(is_active);
     active.update(txn).await?;
     Ok(())
 }
