@@ -16,6 +16,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub password_hash: String,
     pub is_active: bool,
+    pub email_verified: bool,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

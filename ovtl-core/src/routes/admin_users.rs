@@ -12,4 +12,6 @@ pub fn router() -> Router<AppState> {
             "/users/:id",
             delete(admin_users::deactivate_user).put(admin_users::update_user),
         )
+        .route("/users/:id/verification-code", get(admin_users::get_verification_code))
+        .route("/users/:id/password-reset-token", get(admin_users::get_password_reset_token))
 }

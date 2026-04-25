@@ -20,6 +20,53 @@ pub enum Tab {
     Roles,
     Permissions,
     Sessions,
+    Settings,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SettingsState {
+    // Section 0 — Password Policy
+    pub policy_min_length: String,
+    pub policy_require_uppercase: bool,
+    pub policy_require_digit: bool,
+    pub policy_require_special: bool,
+    // Section 1 — Lockout
+    pub lockout_max_attempts: String,
+    pub lockout_window_minutes: String,
+    pub lockout_duration_minutes: String,
+    // Section 2 — Token TTL
+    pub access_token_ttl_minutes: String,
+    pub refresh_token_ttl_days: String,
+    // Section 3 — Registration
+    pub allow_public_registration: bool,
+    pub require_email_verified: bool,
+    // UI
+    pub section: u8,   // 0=policy, 1=lockout, 2=tokens, 3=registration
+    pub entered: bool, // true = inside Settings (Tier 2), false = hovering from main tabs
+    pub field: usize,
+    pub loading: bool,
+}
+
+impl Default for SettingsState {
+    fn default() -> Self {
+        Self {
+            policy_min_length: String::from("8"),
+            policy_require_uppercase: false,
+            policy_require_digit: false,
+            policy_require_special: false,
+            lockout_max_attempts: String::from("5"),
+            lockout_window_minutes: String::from("15"),
+            lockout_duration_minutes: String::from("15"),
+            access_token_ttl_minutes: String::from("15"),
+            refresh_token_ttl_days: String::from("30"),
+            allow_public_registration: true,
+            require_email_verified: false,
+            section: 0,
+            entered: false,
+            field: 0,
+            loading: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -146,6 +193,8 @@ pub struct App {
 
     pub active_tenant_id: Option<String>,
 
+    pub settings: SettingsState,
+
     pub health_status: Option<String>,
     pub health_error: Option<String>,
 
@@ -195,6 +244,8 @@ impl App {
             permissions_loading: false,
 
             active_tenant_id: None,
+
+            settings: SettingsState::default(),
 
             health_status: None,
             health_error: None,

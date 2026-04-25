@@ -5,5 +5,6 @@ pub mod admin_users;
 pub mod auth;
 pub mod clients;
 pub mod oauth_as;
+pub mod settings;
 pub mod tenants;
 pub mod user;

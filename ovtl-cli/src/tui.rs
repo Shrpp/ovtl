@@ -60,6 +60,7 @@ pub async fn run(mut app: App) -> io::Result<()> {
                 Tab::Roles => ui::roles::render(frame, &app, content_body, &mut role_list_state),
                 Tab::Permissions => ui::permissions::render(frame, &app, content_body, &mut permission_list_state),
                 Tab::Sessions => ui::sessions::render(frame, &app, content_body, &mut session_list_state),
+                Tab::Settings => ui::settings::render(frame, &app, content_body),
             }
 
             let hints: Vec<(&str, &str)> = match app.focus {
@@ -112,6 +113,13 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         ("←→", "Switch tab"),
                         ("↑↓", "Navigate"),
                         ("d", "Revoke"),
+                        ("q", "Quit"),
+                    ],
+                    Tab::Settings => vec![
+                        ("Esc", "Back"),
+                        ("←→", "Section"),
+                        ("Tab", "Next field"),
+                        ("Enter", "Save"),
                         ("q", "Quit"),
                     ],
                 },
@@ -774,25 +782,60 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
         KeyCode::Esc => {
             app.focus = Focus::Sidebar;
         }
-        KeyCode::Left => {
+        // ── Tier 1: main tab navigation (only when NOT inside Settings) ──
+        KeyCode::Left if !app.settings.entered => {
             app.tab = match app.tab {
                 Tab::Clients => Tab::Sessions,
                 Tab::Users => Tab::Clients,
                 Tab::Roles => Tab::Users,
                 Tab::Permissions => Tab::Roles,
                 Tab::Sessions => Tab::Permissions,
+                Tab::Settings => Tab::Sessions,
             };
             load_current_tab(app).await;
         }
-        KeyCode::Right | KeyCode::Tab => {
+        KeyCode::Right | KeyCode::Tab if !app.settings.entered => {
             app.tab = match app.tab {
                 Tab::Clients => Tab::Users,
                 Tab::Users => Tab::Roles,
                 Tab::Roles => Tab::Permissions,
                 Tab::Permissions => Tab::Sessions,
-                Tab::Sessions => Tab::Clients,
+                Tab::Sessions => Tab::Settings,
+                Tab::Settings => Tab::Clients,
             };
             load_current_tab(app).await;
+        }
+        // Enter Settings (Tier 1 → Tier 2)
+        KeyCode::Enter if app.tab == Tab::Settings && !app.settings.entered => {
+            app.settings.entered = true;
+            app.settings.field = 0;
+        }
+        // ── Tier 2: inside Settings ──
+        KeyCode::Left if app.settings.entered => {
+            app.settings.section = app.settings.section.saturating_sub(1);
+            app.settings.field = 0;
+        }
+        KeyCode::Right if app.settings.entered => {
+            if app.settings.section < 3 { app.settings.section += 1; }
+            app.settings.field = 0;
+        }
+        KeyCode::Tab if app.settings.entered => {
+            handle_settings_tab(app);
+        }
+        KeyCode::Char(' ') if app.settings.entered => {
+            handle_settings_toggle(app);
+        }
+        KeyCode::Enter if app.settings.entered => {
+            save_settings_section(app).await;
+        }
+        KeyCode::Backspace if app.settings.entered => {
+            if !handle_settings_backspace(app) {
+                // Field was empty (or toggle) — exit to Tier 1
+                app.settings.entered = false;
+            }
+        }
+        KeyCode::Char(c) if app.settings.entered => {
+            handle_settings_char(app, c);
         }
         KeyCode::Up => match app.tab {
             Tab::Clients => { if app.client_selected > 0 { app.client_selected -= 1; } }
@@ -800,6 +843,7 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
             Tab::Roles => { if app.role_selected > 0 { app.role_selected -= 1; } }
             Tab::Permissions => { if app.permission_selected > 0 { app.permission_selected -= 1; } }
             Tab::Sessions => { if app.session_selected > 0 { app.session_selected -= 1; } }
+            Tab::Settings => {}
         },
         KeyCode::Down => match app.tab {
             Tab::Clients => { if app.client_selected + 1 < app.clients.len() { app.client_selected += 1; } }
@@ -807,6 +851,7 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
             Tab::Roles => { if app.role_selected + 1 < app.roles.len() { app.role_selected += 1; } }
             Tab::Permissions => { if app.permission_selected + 1 < app.permissions.len() { app.permission_selected += 1; } }
             Tab::Sessions => { if app.session_selected + 1 < app.sessions.len() { app.session_selected += 1; } }
+            Tab::Settings => {}
         },
         KeyCode::Char('n') => match app.tab {
             Tab::Clients => {
@@ -848,6 +893,7 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
                 }
             }
             Tab::Sessions => {}
+            Tab::Settings => {}
         },
         KeyCode::Char('e') => match app.tab {
             Tab::Clients => {
@@ -882,6 +928,7 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
                 }
             }
             Tab::Sessions => {}
+            Tab::Settings => {}
         },
         KeyCode::Char('d') => match app.tab {
             Tab::Clients => {
@@ -909,6 +956,7 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
                     app.modal = Modal::ConfirmDelete { id: s.id.clone(), label: s.email.clone() };
                 }
             }
+            Tab::Settings => {}
         },
         _ => {}
     }
@@ -971,6 +1019,7 @@ async fn load_current_tab(app: &mut App) {
         Tab::Roles => load_roles(app, tid).await,
         Tab::Permissions => load_permissions(app, tid).await,
         Tab::Sessions => load_sessions(app, tid).await,
+        Tab::Settings => load_settings(app, tid).await,
     }
 }
 
@@ -1119,13 +1168,11 @@ async fn perform_create_client(
 }
 
 async fn perform_create_user(app: &mut App, email: String, password: String) {
-    let Some(tid) = app.active_tenant_id.clone() else {
-        return;
-    };
+    let Some(tid) = app.active_tenant_id.clone() else { return };
     match app.client.create_user(&tid, &email, &password).await {
         Ok(_) => {
-            app.set_status(format!("User '{email}' created"));
             load_all(app).await;
+            app.set_status(format!("User '{email}' created"));
         }
         Err(e) => app.modal = Modal::Error(format!("{e}")),
     }
@@ -1581,6 +1628,7 @@ async fn perform_delete(app: &mut App, id: String) {
             .map(|_| "Permission deleted"),
         Tab::Sessions => app.client.delete_session(&tid, &id).await
             .map(|_| "Session revoked"),
+        Tab::Settings => return,
     };
     match result {
         Ok(msg) => {
@@ -1588,5 +1636,153 @@ async fn perform_delete(app: &mut App, id: String) {
             load_all(app).await;
         }
         Err(e) => app.modal = Modal::Error(format!("{e}")),
+    }
+}
+
+// ── Settings tab helpers ──────────────────────────────────────────────────────
+
+async fn load_settings(app: &mut App, tid: String) {
+    app.settings.loading = true;
+    let client = app.client.clone();
+    let (policy_r, lockout_r, tokens_r, reg_r) = tokio::join!(
+        client.get_password_policy(&tid),
+        client.get_lockout_policy(&tid),
+        client.get_token_ttl(&tid),
+        client.get_registration_policy(&tid),
+    );
+    if let Ok(p) = policy_r {
+        app.settings.policy_min_length = p.min_length.to_string();
+        app.settings.policy_require_uppercase = p.require_uppercase;
+        app.settings.policy_require_digit = p.require_digit;
+        app.settings.policy_require_special = p.require_special;
+    }
+    if let Ok(l) = lockout_r {
+        app.settings.lockout_max_attempts = l.max_attempts.to_string();
+        app.settings.lockout_window_minutes = l.window_minutes.to_string();
+        app.settings.lockout_duration_minutes = l.duration_minutes.to_string();
+    }
+    if let Ok(t) = tokens_r {
+        app.settings.access_token_ttl_minutes = t.access_token_ttl_minutes.to_string();
+        app.settings.refresh_token_ttl_days = t.refresh_token_ttl_days.to_string();
+    }
+    if let Ok(r) = reg_r {
+        app.settings.allow_public_registration = r.allow_public_registration;
+        app.settings.require_email_verified = r.require_email_verified;
+    }
+    app.settings.loading = false;
+}
+
+fn handle_settings_tab(app: &mut App) {
+    let max = match app.settings.section {
+        0 => 4, // min_length + 3 toggles
+        1 => 3, // 3 numeric fields
+        2 => 2, // 2 numeric fields
+        3 => 2, // 2 toggles
+        _ => 1,
+    };
+    app.settings.field = (app.settings.field + 1) % max;
+}
+
+fn handle_settings_toggle(app: &mut App) {
+    let s = &mut app.settings;
+    match s.section {
+        0 => match s.field {
+            1 => s.policy_require_uppercase = !s.policy_require_uppercase,
+            2 => s.policy_require_digit = !s.policy_require_digit,
+            3 => s.policy_require_special = !s.policy_require_special,
+            _ => {}
+        },
+        3 => match s.field {
+            0 => s.allow_public_registration = !s.allow_public_registration,
+            1 => s.require_email_verified = !s.require_email_verified,
+            _ => {}
+        },
+        _ => {}
+    }
+}
+
+// Returns true if a character was deleted, false if field was empty/toggle (caller should exit tier).
+fn handle_settings_backspace(app: &mut App) -> bool {
+    let s = &mut app.settings;
+    match s.section {
+        0 => match s.field {
+            0 => s.policy_min_length.pop().is_some(),
+            _ => false, // toggles — exit
+        },
+        1 => match s.field {
+            0 => s.lockout_max_attempts.pop().is_some(),
+            1 => s.lockout_window_minutes.pop().is_some(),
+            2 => s.lockout_duration_minutes.pop().is_some(),
+            _ => false,
+        },
+        2 => match s.field {
+            0 => s.access_token_ttl_minutes.pop().is_some(),
+            1 => s.refresh_token_ttl_days.pop().is_some(),
+            _ => false,
+        },
+        3 => false, // all toggles — exit
+        _ => false,
+    }
+}
+
+fn handle_settings_char(app: &mut App, c: char) {
+    if !c.is_ascii_digit() { return; }
+    let s = &mut app.settings;
+    match s.section {
+        0 => { if s.field == 0 { s.policy_min_length.push(c); } }
+        1 => match s.field {
+            0 => s.lockout_max_attempts.push(c),
+            1 => s.lockout_window_minutes.push(c),
+            2 => s.lockout_duration_minutes.push(c),
+            _ => {}
+        },
+        2 => match s.field {
+            0 => s.access_token_ttl_minutes.push(c),
+            1 => s.refresh_token_ttl_days.push(c),
+            _ => {}
+        },
+        _ => {}
+    }
+}
+
+async fn save_settings_section(app: &mut App) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    match app.settings.section {
+        0 => {
+            let min_len: i32 = app.settings.policy_min_length.parse().unwrap_or(8);
+            let uu = app.settings.policy_require_uppercase;
+            let dd = app.settings.policy_require_digit;
+            let ss = app.settings.policy_require_special;
+            match app.client.put_password_policy(&tid, min_len, uu, dd, ss).await {
+                Ok(_) => app.set_status("Password policy saved"),
+                Err(e) => app.modal = Modal::Error(format!("{e}")),
+            }
+        }
+        1 => {
+            let max_att: i32 = app.settings.lockout_max_attempts.parse().unwrap_or(5);
+            let win: i32 = app.settings.lockout_window_minutes.parse().unwrap_or(15);
+            let dur: i32 = app.settings.lockout_duration_minutes.parse().unwrap_or(15);
+            match app.client.put_lockout_policy(&tid, max_att, win, dur).await {
+                Ok(_) => app.set_status("Lockout policy saved"),
+                Err(e) => app.modal = Modal::Error(format!("{e}")),
+            }
+        }
+        2 => {
+            let acc: i32 = app.settings.access_token_ttl_minutes.parse().unwrap_or(15);
+            let ref_days: i32 = app.settings.refresh_token_ttl_days.parse().unwrap_or(30);
+            match app.client.put_token_ttl(&tid, acc, ref_days).await {
+                Ok(_) => app.set_status("Token TTL saved"),
+                Err(e) => app.modal = Modal::Error(format!("{e}")),
+            }
+        }
+        3 => {
+            let allow = app.settings.allow_public_registration;
+            let require = app.settings.require_email_verified;
+            match app.client.put_registration_policy(&tid, allow, require).await {
+                Ok(_) => app.set_status("Registration policy saved"),
+                Err(e) => app.modal = Modal::Error(format!("{e}")),
+            }
+        }
+        _ => {}
     }
 }

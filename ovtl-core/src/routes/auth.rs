@@ -2,12 +2,15 @@ use axum::{routing::{get, post}, Router};
 
 use crate::{
     handlers::{
+        forgot_password::forgot_password,
         login::login,
         logout::logout,
         oauth::{authorize, callback},
         refresh::refresh,
         register::register,
+        reset_password::reset_password,
         revoke::revoke,
+        verify_email::verify_email,
     },
     state::AppState,
 };
@@ -18,6 +21,9 @@ pub fn public_router() -> Router<AppState> {
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
         .route("/auth/refresh", post(refresh))
+        .route("/auth/forgot-password", post(forgot_password))
+        .route("/auth/reset-password", post(reset_password))
+        .route("/auth/verify-otp", post(verify_email))
         // OAuth authorize — tenant header required (client sets it)
         .route("/auth/:provider", get(authorize))
 }

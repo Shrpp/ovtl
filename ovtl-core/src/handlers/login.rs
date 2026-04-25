@@ -7,7 +7,7 @@ use crate::{
     db,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::{audit_service, lockout_service, permission_service, role_service, session_service, token_service, user_service},
+    services::{audit_service, lockout_service, permission_service, role_service, session_service, tenant_settings_service, token_service, user_service},
     state::AppState,
 };
 
@@ -38,12 +38,20 @@ pub async fn login(
 
     let ip = addr.ip().to_string();
 
-    // Normalize email before lookup — consistent with registration.
+    let settings = tenant_settings_service::get(&state.db, ctx.tenant_id).await?;
+
     let email_normalized = payload.email.trim().to_lowercase();
     let email_lookup = hefesto::hash_for_lookup(&email_normalized, &ctx.tenant_key)?;
 
-    // Check account lockout before touching the DB user record.
-    if lockout_service::is_locked(&state.db, ctx.tenant_id, &email_lookup).await? {
+    if lockout_service::is_locked(
+        &state.db,
+        ctx.tenant_id,
+        &email_lookup,
+        settings.lockout_max_attempts,
+        settings.lockout_window_minutes,
+    )
+    .await?
+    {
         audit_service::record(
             state.db.clone(),
             ctx.tenant_id,
@@ -77,6 +85,11 @@ pub async fn login(
     if !user.is_active {
         txn.commit().await?;
         return Err(AppError::Unauthorized);
+    }
+
+    if settings.require_email_verified && !user.email_verified {
+        txn.commit().await?;
+        return Err(AppError::InvalidInput("email not verified".into()));
     }
 
     if !hefesto::verify_password(&payload.password, &user.password_hash) {
@@ -113,7 +126,7 @@ pub async fn login(
         roles,
         permissions,
         &state.config.jwt_secret,
-        state.config.jwt_expiration_minutes,
+        settings.access_token_ttl_minutes,
     )?;
 
     let refresh_token = token_service::generate_refresh_token();
@@ -124,13 +137,12 @@ pub async fn login(
         ctx.tenant_id,
         user.id,
         token_hash,
-        state.config.refresh_token_expiration_days,
+        settings.refresh_token_ttl_days,
     )
     .await?;
 
     txn.commit().await?;
 
-    // Clear failed attempts and record successful login.
     lockout_service::clear_attempts(&state.db, ctx.tenant_id, &email_lookup).await?;
     audit_service::record(
         state.db.clone(),
@@ -141,21 +153,19 @@ pub async fn login(
         None,
     );
 
-    // Create SSO session.
-    let session_ttl_days = state.config.refresh_token_expiration_days;
     let session_id = session_service::create(
         &state.db,
         ctx.tenant_id,
         user.id,
         session_service::SessionData { email: email_plain, ip: Some(ip) },
-        session_ttl_days,
+        settings.refresh_token_ttl_days,
     )
     .await
     .unwrap_or_default();
 
     let cookie = format!(
         "ovtl_session={session_id}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}",
-        session_ttl_days * 86400
+        settings.refresh_token_ttl_days * 86400
     );
 
     let mut response_headers = axum::http::HeaderMap::new();
@@ -166,7 +176,7 @@ pub async fn login(
         Json(TokenResponse {
             access_token,
             refresh_token,
-            expires_in: state.config.jwt_expiration_minutes * 60,
+            expires_in: settings.access_token_ttl_minutes * 60,
         }),
     ))
 }

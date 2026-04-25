@@ -10,11 +10,18 @@ use validator::Validate;
 
 use crate::{
     db,
+    entity::one_time_tokens,
     error::AppError,
     handlers::admin_auth,
-    services::{tenant_service, user_service},
+    services::{one_time_token_service, tenant_service, user_service},
     state::AppState,
 };
+
+#[derive(Debug, Serialize)]
+pub struct VerificationCodeResponse {
+    pub otp: String,
+    pub expires_in_hours: u32,
+}
 
 fn extract_tenant_id(headers: &HeaderMap) -> Result<Uuid, AppError> {
     headers
@@ -29,6 +36,7 @@ pub struct UserResponse {
     pub id: String,
     pub email: String,
     pub is_active: bool,
+    pub email_verified: bool,
     pub created_at: String,
 }
 
@@ -71,6 +79,7 @@ pub async fn list_users(
                 id: u.id.to_string(),
                 email,
                 is_active: u.is_active,
+                email_verified: u.email_verified,
                 created_at: u.created_at.to_rfc3339(),
             }
         })
@@ -134,6 +143,7 @@ pub async fn create_user(
             id: user.id.to_string(),
             email: email_normalized,
             is_active: user.is_active,
+            email_verified: user.email_verified,
             created_at: user.created_at.to_rfc3339(),
         }),
     ))
@@ -206,4 +216,53 @@ pub async fn deactivate_user(
     txn.commit().await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_verification_code(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
+    let tenant_id = extract_tenant_id(&headers)?;
+
+    let otp = one_time_token_service::generate_otp();
+    one_time_token_service::store_otp(&state.db, tenant_id, id, &otp, 48).await?;
+
+    Ok(Json(VerificationCodeResponse {
+        otp,
+        expires_in_hours: 48,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct PasswordResetTokenResponse {
+    pub token: String,
+    pub expires_in_minutes: i64,
+}
+
+pub async fn get_password_reset_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
+    let tenant_id = extract_tenant_id(&headers)?;
+
+    let token = one_time_token_service::generate();
+    let token_hash = one_time_token_service::hash(&token);
+    one_time_token_service::store(
+        &state.db,
+        tenant_id,
+        id,
+        token_hash,
+        one_time_tokens::TYPE_PASSWORD_RESET,
+        60,
+    )
+    .await?;
+
+    Ok(Json(PasswordResetTokenResponse {
+        token,
+        expires_in_minutes: 60,
+    }))
 }

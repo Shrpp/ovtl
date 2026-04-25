@@ -15,6 +15,8 @@ mod m20240101_000012_roles;
 mod m20240101_000013_permissions;
 mod m20240101_000014_sessions_rls;
 mod m20240101_000015_rls_app_role;
+mod m20240101_000016_user_lifecycle;
+mod m20240101_000017_tenant_settings;
 
 pub struct Migrator;
 
@@ -37,6 +39,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20240101_000013_permissions::Migration),
             Box::new(m20240101_000014_sessions_rls::Migration),
             Box::new(m20240101_000015_rls_app_role::Migration),
+            Box::new(m20240101_000016_user_lifecycle::Migration),
+            Box::new(m20240101_000017_tenant_settings::Migration),
         ]
     }
 }

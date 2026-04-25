@@ -496,6 +496,129 @@ impl Client {
             .await?;
         self.check(resp).await
     }
+
+    pub async fn get_password_policy(&self, tenant_id: &str) -> ApiResult<PasswordPolicyResponse> {
+        let resp = self
+            .inner
+            .get(format!("{}/settings/password-policy", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn put_password_policy(
+        &self,
+        tenant_id: &str,
+        min_length: i32,
+        require_uppercase: bool,
+        require_digit: bool,
+        require_special: bool,
+    ) -> ApiResult<serde_json::Value> {
+        let resp = self
+            .inner
+            .put(format!("{}/settings/password-policy", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .json(&serde_json::json!({
+                "min_length": min_length,
+                "require_uppercase": require_uppercase,
+                "require_digit": require_digit,
+                "require_special": require_special,
+                "history_size": 0,
+            }))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn get_lockout_policy(&self, tenant_id: &str) -> ApiResult<LockoutPolicyResponse> {
+        let resp = self
+            .inner
+            .get(format!("{}/settings/lockout", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn put_lockout_policy(
+        &self,
+        tenant_id: &str,
+        max_attempts: i32,
+        window_minutes: i32,
+        duration_minutes: i32,
+    ) -> ApiResult<serde_json::Value> {
+        let resp = self
+            .inner
+            .put(format!("{}/settings/lockout", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .json(&serde_json::json!({
+                "max_attempts": max_attempts,
+                "window_minutes": window_minutes,
+                "duration_minutes": duration_minutes,
+            }))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn get_token_ttl(&self, tenant_id: &str) -> ApiResult<TokenTtlResponse> {
+        let resp = self
+            .inner
+            .get(format!("{}/settings/tokens", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn put_token_ttl(
+        &self,
+        tenant_id: &str,
+        access_token_ttl_minutes: i32,
+        refresh_token_ttl_days: i32,
+    ) -> ApiResult<serde_json::Value> {
+        let resp = self
+            .inner
+            .put(format!("{}/settings/tokens", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .json(&serde_json::json!({
+                "access_token_ttl_minutes": access_token_ttl_minutes,
+                "refresh_token_ttl_days": refresh_token_ttl_days,
+            }))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn get_registration_policy(&self, tenant_id: &str) -> ApiResult<RegistrationPolicyResponse> {
+        let resp = self
+            .inner
+            .get(format!("{}/settings/registration", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn put_registration_policy(
+        &self,
+        tenant_id: &str,
+        allow_public_registration: bool,
+        require_email_verified: bool,
+    ) -> ApiResult<serde_json::Value> {
+        let resp = self
+            .inner
+            .put(format!("{}/settings/registration", self.base_url))
+            .headers(self.tenant_headers(tenant_id))
+            .json(&serde_json::json!({
+                "allow_public_registration": allow_public_registration,
+                "require_email_verified": require_email_verified,
+            }))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
 }
 
 // ── Response DTOs ─────────────────────────────────────────────────────────────
@@ -514,6 +637,7 @@ pub struct User {
     pub id: String,
     pub email: String,
     pub is_active: bool,
+    pub email_verified: bool,
     pub created_at: String,
 }
 
@@ -557,4 +681,32 @@ pub struct OAuthClient {
     pub is_confidential: bool,
     pub is_active: bool,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PasswordPolicyResponse {
+    pub min_length: i32,
+    pub require_uppercase: bool,
+    pub require_digit: bool,
+    pub require_special: bool,
+    pub history_size: i32,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct LockoutPolicyResponse {
+    pub max_attempts: i32,
+    pub window_minutes: i32,
+    pub duration_minutes: i32,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct TokenTtlResponse {
+    pub access_token_ttl_minutes: i32,
+    pub refresh_token_ttl_days: i32,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RegistrationPolicyResponse {
+    pub allow_public_registration: bool,
+    pub require_email_verified: bool,
 }

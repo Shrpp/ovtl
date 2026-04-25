@@ -7,7 +7,7 @@ use crate::{
     db,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::{audit_service, user_service},
+    services::{audit_service, password_policy_service, tenant_settings_service, user_service},
     state::AppState,
 };
 
@@ -15,7 +15,7 @@ use crate::{
 pub struct RegisterRequest {
     #[validate(email)]
     pub email: String,
-    #[validate(length(min = 8, max = 128))]
+    #[validate(length(min = 1, max = 128))]
     pub password: String,
 }
 
@@ -36,9 +36,14 @@ pub async fn register(
         .validate()
         .map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
-    validate_password_strength(&payload.password)?;
+    let settings = tenant_settings_service::get(&state.db, ctx.tenant_id).await?;
+    if !settings.allow_public_registration {
+        return Err(AppError::Forbidden);
+    }
 
-    // Normalize email — prevents duplicate accounts differing only by case.
+    let policy = password_policy_service::get(&state.db, ctx.tenant_id).await?;
+    password_policy_service::validate(&payload.password, &policy)?;
+
     let email_normalized = payload.email.trim().to_lowercase();
 
     let email_lookup = hefesto::hash_for_lookup(&email_normalized, &ctx.tenant_key)?;
@@ -85,15 +90,4 @@ pub async fn register(
             created_at: user.created_at.to_rfc3339(),
         }),
     ))
-}
-
-fn validate_password_strength(password: &str) -> Result<(), AppError> {
-    let has_upper = password.chars().any(|c| c.is_uppercase());
-    let has_digit = password.chars().any(|c| c.is_ascii_digit());
-    if !has_upper || !has_digit {
-        return Err(AppError::InvalidInput(
-            "password must contain at least one uppercase letter and one digit".into(),
-        ));
-    }
-    Ok(())
 }

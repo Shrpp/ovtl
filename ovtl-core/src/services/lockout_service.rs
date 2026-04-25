@@ -4,23 +4,23 @@ use uuid::Uuid;
 
 use crate::{entity::login_attempts, error::AppError};
 
-const MAX_ATTEMPTS: usize = 5;
-const WINDOW_MINUTES: i64 = 15;
+const CLEANUP_WINDOW_MINUTES: i64 = 60;
 
-/// Returns true if the account is currently locked out.
 pub async fn is_locked(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     email_lookup: &str,
+    max_attempts: usize,
+    window_minutes: i64,
 ) -> Result<bool, AppError> {
-    let since = (Utc::now() - chrono::Duration::minutes(WINDOW_MINUTES)).fixed_offset();
+    let since = (Utc::now() - chrono::Duration::minutes(window_minutes)).fixed_offset();
     let attempts = login_attempts::Entity::find()
         .filter(login_attempts::Column::TenantId.eq(tenant_id))
         .filter(login_attempts::Column::EmailLookup.eq(email_lookup))
         .filter(login_attempts::Column::AttemptedAt.gte(since))
         .all(db)
         .await?;
-    Ok(attempts.len() >= MAX_ATTEMPTS)
+    Ok(attempts.len() >= max_attempts)
 }
 
 pub async fn record_attempt(
@@ -52,9 +52,8 @@ pub async fn clear_attempts(
     Ok(())
 }
 
-/// Delete stale attempts older than the lockout window. Call from background cleanup task.
 pub async fn cleanup_old_attempts(db: &DatabaseConnection) -> Result<u64, AppError> {
-    let cutoff = (Utc::now() - chrono::Duration::minutes(WINDOW_MINUTES)).fixed_offset();
+    let cutoff = (Utc::now() - chrono::Duration::minutes(CLEANUP_WINDOW_MINUTES)).fixed_offset();
     let result = login_attempts::Entity::delete_many()
         .filter(login_attempts::Column::AttemptedAt.lt(cutoff))
         .exec(db)

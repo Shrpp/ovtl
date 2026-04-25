@@ -6,4 +6,5 @@ pub mod permissions;
 pub mod quickstart;
 pub mod roles;
 pub mod sessions;
+pub mod settings;
 pub mod users;

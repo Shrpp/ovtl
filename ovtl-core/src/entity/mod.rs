@@ -1,4 +1,7 @@
 pub mod audit_log;
+pub mod one_time_tokens;
+pub mod password_policies;
+pub mod tenant_settings;
 pub mod permissions;
 pub mod revoked_jtis;
 pub mod role_permissions;
