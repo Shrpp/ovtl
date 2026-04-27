@@ -20,6 +20,7 @@ mod m20240101_000017_tenant_settings;
 mod m20240101_000018_client_roles;
 mod m20240101_000019_client_token_ttl;
 mod m20240101_000020_identity_providers;
+mod m20240101_000021_totp_secrets;
 
 pub struct Migrator;
 
@@ -47,6 +48,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20240101_000018_client_roles::Migration),
             Box::new(m20240101_000019_client_token_ttl::Migration),
             Box::new(m20240101_000020_identity_providers::Migration),
+            Box::new(m20240101_000021_totp_secrets::Migration),
         ]
     }
 }

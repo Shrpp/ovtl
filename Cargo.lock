@@ -288,6 +288,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base32"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23ce669cd6c8588f79e15cf450314f9638f967fc5770ff1c7c1deb0925ea7cfa"
+
+[[package]]
 name = "base64"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2317,6 +2323,7 @@ name = "ovtl-core"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "base32",
  "base64 0.22.1",
  "chrono",
  "dotenvy",
@@ -2332,9 +2339,11 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "sha1",
  "sha2",
  "thiserror 1.0.69",
  "tokio",
+ "totp-lite",
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
@@ -4145,6 +4154,18 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+
+[[package]]
+name = "totp-lite"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8e43134db17199f7f721803383ac5854edd0d3d523cc34dba321d6acfbe76c3"
+dependencies = [
+ "digest",
+ "hmac",
+ "sha1",
+ "sha2",
+]
 
 [[package]]
 name = "tower"

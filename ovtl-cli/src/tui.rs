@@ -8,7 +8,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 use crate::{
-    api::ApiError,
+    api::{ApiError, LoginResult},
     app::{App, AppMode, Focus, Modal, QuickStartState, Tab},
     components::{modal, statusbar, table::StatefulTable},
     events::{poll, AppEvent},
@@ -43,7 +43,7 @@ pub async fn run(mut app: App) -> io::Result<()> {
 
     loop {
         terminal.draw(|frame| {
-            if matches!(&app.mode, AppMode::Login { .. }) {
+            if matches!(&app.mode, AppMode::Login { .. } | AppMode::MfaChallenge { .. }) {
                 ui::login::render(frame, &app);
                 return;
             }
@@ -90,6 +90,7 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         ("↑↓", "Navigate"),
                         ("n", "New"),
                         ("e", "Edit"),
+                        ("m", "Disable MFA"),
                         ("d", "Deactivate"),
                         ("q", "Quit"),
                     ],
@@ -257,6 +258,8 @@ pub async fn run(mut app: App) -> io::Result<()> {
             Some(AppEvent::Key(key)) => {
                 if matches!(&app.mode, AppMode::Login { .. }) {
                     handle_login_key(&mut app, key.code).await;
+                } else if matches!(&app.mode, AppMode::MfaChallenge { .. }) {
+                    handle_mfa_key(&mut app, key.code).await;
                 } else {
                     handle_key(&mut app, key.code, key.modifiers).await;
                 }
@@ -343,7 +346,7 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
             }
             let client = app.client.clone();
             match client.login(&email, &password, &slug).await {
-                Ok(token) => {
+                Ok(LoginResult::Token(token)) => {
                     app.client.set_token(token);
                     app.mode = AppMode::Admin;
                     load_tenants(app).await;
@@ -355,6 +358,14 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                         app.modal = Modal::QuickStart(QuickStartState::default());
                     }
                 }
+                Ok(LoginResult::MfaRequired { mfa_token }) => {
+                    app.mode = AppMode::MfaChallenge {
+                        mfa_token,
+                        slug,
+                        code: String::new(),
+                        error: None,
+                    };
+                }
                 Err(ApiError::Api { status: 401, .. }) => {
                     app.mode = mk_mode(email, password, slug, slug_idx, field,
                         Some("Invalid credentials".to_string()));
@@ -362,6 +373,73 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                 Err(e) => {
                     app.mode = mk_mode(email, password, slug, slug_idx, field,
                         Some(format!("Error: {e}")));
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+async fn handle_mfa_key(app: &mut App, key: KeyCode) {
+    let (mfa_token, slug, otp_code) = match &app.mode {
+        AppMode::MfaChallenge { mfa_token, slug, code, .. } => {
+            (mfa_token.clone(), slug.clone(), code.clone())
+        }
+        _ => return,
+    };
+
+    match key {
+        KeyCode::Esc => {
+            let default_slug = app.tenant_options.first().map(|(s, _)| s.clone()).unwrap_or_else(|| "master".into());
+            app.mode = AppMode::Login {
+                email: String::new(),
+                password: String::new(),
+                slug: default_slug,
+                slug_idx: 0,
+                field: 0,
+                error: None,
+            };
+        }
+        KeyCode::Backspace => {
+            if let AppMode::MfaChallenge { code, .. } = &mut app.mode {
+                code.pop();
+            }
+        }
+        KeyCode::Char(c) if c.is_ascii_digit() => {
+            if let AppMode::MfaChallenge { code, .. } = &mut app.mode {
+                if code.len() < 6 {
+                    code.push(c);
+                }
+            }
+        }
+        KeyCode::Enter => {
+            if otp_code.len() != 6 {
+                return;
+            }
+            let client = app.client.clone();
+            match client.mfa_challenge(&slug, &mfa_token, &otp_code).await {
+                Ok(token) => {
+                    app.client.set_token(token);
+                    app.mode = AppMode::Admin;
+                    load_tenants(app).await;
+                    check_health(app).await;
+                    let only_master = app.tenants.len() <= 1
+                        && app.tenants.iter().all(|t| t.slug == "master");
+                    if only_master && slug == "master" {
+                        app.modal = Modal::QuickStart(QuickStartState::default());
+                    }
+                }
+                Err(ApiError::Api { status: 401, .. }) => {
+                    if let AppMode::MfaChallenge { error, code, .. } = &mut app.mode {
+                        *error = Some("Invalid code".into());
+                        code.clear();
+                    }
+                }
+                Err(e) => {
+                    if let AppMode::MfaChallenge { error, code, .. } = &mut app.mode {
+                        *error = Some(format!("Error: {e}"));
+                        code.clear();
+                    }
                 }
             }
         }
@@ -1156,6 +1234,23 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
             if app.tab == Tab::Clients {
                 if let (Some(c), Some(tid)) = (app.selected_client().cloned(), app.active_tenant_id.clone()) {
                     open_client_roles(app, c.id, c.name, tid).await;
+                }
+            }
+        }
+        KeyCode::Char('m') => {
+            if app.tab == Tab::Users {
+                if let (Some(u), Some(tid)) = (app.selected_user().cloned(), app.active_tenant_id.clone()) {
+                    if u.mfa_enabled {
+                        match app.client.admin_disable_user_mfa(&tid, &u.id).await {
+                            Ok(_) => {
+                                app.set_status(format!("MFA disabled for {}", u.email));
+                                load_users(app, tid).await;
+                            }
+                            Err(e) => app.set_status(format!("Error: {e}")),
+                        }
+                    } else {
+                        app.set_status("MFA is not enabled for this user");
+                    }
                 }
             }
         }

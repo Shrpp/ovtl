@@ -1,4 +1,5 @@
 pub mod audit_service;
+pub mod mfa_service;
 pub mod identity_provider_service;
 pub mod one_time_token_service;
 pub mod tenant_settings_service;

@@ -3,7 +3,7 @@ use axum::{
     Router,
 };
 
-use crate::{handlers::admin_users, state::AppState};
+use crate::{handlers::{admin_users, mfa}, state::AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -14,4 +14,5 @@ pub fn router() -> Router<AppState> {
         )
         .route("/users/:id/verification-code", get(admin_users::get_verification_code))
         .route("/users/:id/password-reset-token", get(admin_users::get_password_reset_token))
+        .route("/users/:id/mfa", delete(mfa::admin_disable_mfa))
 }

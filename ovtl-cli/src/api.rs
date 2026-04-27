@@ -74,10 +74,12 @@ impl Client {
 
     // ── Auth ──────────────────────────────────────────────────────────────────
 
-    pub async fn login(&self, email: &str, password: &str, slug: &str) -> ApiResult<String> {
+    pub async fn login(&self, email: &str, password: &str, slug: &str) -> ApiResult<LoginResult> {
         #[derive(Deserialize)]
         struct LoginResp {
-            access_token: String,
+            access_token: Option<String>,
+            mfa_required: Option<bool>,
+            mfa_token: Option<String>,
         }
         let resp = self
             .inner
@@ -87,7 +89,41 @@ impl Client {
             .send()
             .await?;
         let body: LoginResp = self.check(resp).await?;
+        if body.mfa_required == Some(true) {
+            if let Some(mfa_token) = body.mfa_token {
+                return Ok(LoginResult::MfaRequired { mfa_token });
+            }
+        }
+        Ok(LoginResult::Token(body.access_token.unwrap_or_default()))
+    }
+
+    pub async fn mfa_challenge(&self, slug: &str, mfa_token: &str, code: &str) -> ApiResult<String> {
+        #[derive(Deserialize)]
+        struct TokenResp {
+            access_token: String,
+        }
+        let resp = self
+            .inner
+            .post(format!("{}/auth/mfa/challenge", self.base_url))
+            .header("x-ovtl-tenant-slug", slug)
+            .json(&serde_json::json!({ "mfa_token": mfa_token, "code": code }))
+            .send()
+            .await?;
+        let body: TokenResp = self.check(resp).await?;
         Ok(body.access_token)
+    }
+
+    pub async fn admin_disable_user_mfa(&self, tenant_id: &str, user_id: &str) -> ApiResult<()> {
+        let resp = self
+            .inner
+            .delete(format!("{}/users/{}/mfa", self.base_url, user_id))
+            .headers(self.tenant_headers(tenant_id))
+            .send()
+            .await?;
+        let status = resp.status();
+        if status.is_success() { Ok(()) } else {
+            Err(ApiError::Api { status: status.as_u16(), message: "disable mfa failed".into() })
+        }
     }
 
     // ── Tenants ───────────────────────────────────────────────────────────────
@@ -753,6 +789,12 @@ impl Client {
 
 // ── Response DTOs ─────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone)]
+pub enum LoginResult {
+    Token(String),
+    MfaRequired { mfa_token: String },
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Tenant {
     pub id: String,
@@ -768,6 +810,8 @@ pub struct User {
     pub email: String,
     pub is_active: bool,
     pub email_verified: bool,
+    #[serde(default)]
+    pub mfa_enabled: bool,
     pub created_at: String,
 }
 

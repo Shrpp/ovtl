@@ -1,5 +1,6 @@
 use axum::{extract::{ConnectInfo, State}, http::header, response::IntoResponse, Extension, Json};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::net::SocketAddr;
 use validator::Validate;
 
@@ -7,7 +8,7 @@ use crate::{
     db,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::{audit_service, lockout_service, permission_service, role_service, session_service, tenant_settings_service, token_service, user_service},
+    services::{audit_service, lockout_service, mfa_service, permission_service, role_service, session_service, tenant_settings_service, token_service, user_service},
     state::AppState,
 };
 
@@ -24,6 +25,12 @@ pub struct TokenResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct MfaRequiredResponse {
+    pub mfa_required: bool,
+    pub mfa_token: String,
 }
 
 pub async fn login(
@@ -112,6 +119,17 @@ pub async fn login(
         &state.config.master_encryption_key,
     )?;
 
+    // MFA check — if enabled, issue a short-lived challenge token instead of full tokens
+    if mfa_service::find_enabled(&txn, ctx.tenant_id, user.id).await?.is_some() {
+        txn.commit().await?;
+        lockout_service::clear_attempts(&state.db, ctx.tenant_id, &email_lookup).await?;
+        let mfa_token = token_service::generate_mfa_token(user.id, ctx.tenant_id, &state.config.jwt_secret)?;
+        return Ok(Json(json!({
+            "mfa_required": true,
+            "mfa_token": mfa_token,
+        })).into_response());
+    }
+
     let roles = role_service::list_names_for_user(&txn, user.id, ctx.tenant_id)
         .await
         .unwrap_or_default();
@@ -179,5 +197,5 @@ pub async fn login(
             refresh_token,
             expires_in: settings.access_token_ttl_minutes * 60,
         }),
-    ))
+    ).into_response())
 }

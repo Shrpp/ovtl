@@ -13,7 +13,7 @@ use crate::{
     entity::one_time_tokens,
     error::AppError,
     handlers::admin_auth,
-    services::{one_time_token_service, tenant_service, user_service},
+    services::{mfa_service, one_time_token_service, tenant_service, user_service},
     state::AppState,
 };
 
@@ -37,6 +37,7 @@ pub struct UserResponse {
     pub email: String,
     pub is_active: bool,
     pub email_verified: bool,
+    pub mfa_enabled: bool,
     pub created_at: String,
 }
 
@@ -64,26 +65,29 @@ pub async fn list_users(
 
     let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;
     let users = user_service::list_all(&txn).await?;
-    txn.commit().await?;
 
-    let response: Vec<UserResponse> = users
-        .into_iter()
-        .map(|u| {
-            let email = hefesto::decrypt(
-                &u.email,
-                &tenant_key,
-                &state.config.master_encryption_key,
-            )
-            .unwrap_or_else(|_| "<encrypted>".into());
-            UserResponse {
-                id: u.id.to_string(),
-                email,
-                is_active: u.is_active,
-                email_verified: u.email_verified,
-                created_at: u.created_at.to_rfc3339(),
-            }
-        })
-        .collect();
+    let mut response: Vec<UserResponse> = Vec::with_capacity(users.len());
+    for u in users {
+        let email = hefesto::decrypt(
+            &u.email,
+            &tenant_key,
+            &state.config.master_encryption_key,
+        )
+        .unwrap_or_else(|_| "<encrypted>".into());
+        let mfa_enabled = mfa_service::is_mfa_enabled_for_user(&txn, tenant_id, u.id)
+            .await
+            .unwrap_or(false);
+        response.push(UserResponse {
+            id: u.id.to_string(),
+            email,
+            is_active: u.is_active,
+            email_verified: u.email_verified,
+            mfa_enabled,
+            created_at: u.created_at.to_rfc3339(),
+        });
+    }
+
+    txn.commit().await?;
 
     Ok(Json(response))
 }
@@ -144,6 +148,7 @@ pub async fn create_user(
             email: email_normalized,
             is_active: user.is_active,
             email_verified: user.email_verified,
+            mfa_enabled: false,
             created_at: user.created_at.to_rfc3339(),
         }),
     ))

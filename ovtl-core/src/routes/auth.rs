@@ -5,6 +5,7 @@ use crate::{
         forgot_password::forgot_password,
         login::login,
         logout::logout,
+        mfa::{mfa_challenge, mfa_confirm, mfa_disable, mfa_setup},
         oauth::{authorize, callback},
         refresh::refresh,
         register::register,
@@ -24,6 +25,7 @@ pub fn public_router() -> Router<AppState> {
         .route("/auth/forgot-password", post(forgot_password))
         .route("/auth/reset-password", post(reset_password))
         .route("/auth/verify-otp", post(verify_email))
+        .route("/auth/mfa/challenge", post(mfa_challenge))
         // OAuth authorize — tenant header required (client sets it)
         .route("/auth/:provider", get(authorize))
 }
@@ -33,6 +35,9 @@ pub fn protected_router() -> Router<AppState> {
     Router::new()
         .route("/auth/logout", post(logout))
         .route("/auth/revoke", post(revoke))
+        .route("/auth/mfa/setup", post(mfa_setup))
+        .route("/auth/mfa/confirm", post(mfa_confirm))
+        .route("/auth/mfa/disable", post(mfa_disable))
 }
 
 /// OAuth callbacks — no tenant header; tenant extracted from state param.

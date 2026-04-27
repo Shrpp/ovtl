@@ -1,4 +1,5 @@
 pub mod audit_log;
+pub mod totp_secrets;
 pub mod client_roles;
 pub mod identity_providers;
 pub mod one_time_tokens;

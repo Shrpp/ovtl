@@ -9,6 +9,11 @@ use ratatui::{
 use crate::app::{App, AppMode};
 
 pub fn render(frame: &mut Frame, app: &App) {
+    if let AppMode::MfaChallenge { code, error, .. } = &app.mode {
+        render_mfa_challenge(frame, code, error.as_deref());
+        return;
+    }
+
     let AppMode::Login {
         email,
         password,
@@ -234,5 +239,85 @@ pub fn render(frame: &mut Frame, app: &App) {
     frame.render_widget(
         Paragraph::new(Line::from(nav_hint)).alignment(Alignment::Center),
         chunks[hint_idx],
+    );
+}
+
+fn render_mfa_challenge(frame: &mut Frame, code: &str, error: Option<&str>) {
+    let size = frame.area();
+    let box_w: u16 = 48;
+    let box_h: u16 = 13;
+    let area = Rect {
+        x: size.x + size.width.saturating_sub(box_w) / 2,
+        y: size.y + size.height.saturating_sub(box_h) / 2,
+        width: box_w.min(size.width),
+        height: box_h.min(size.height),
+    };
+
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Block::default()
+            .title(" Two-Factor Authentication ")
+            .title_alignment(Alignment::Center)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan)),
+        area,
+    );
+
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 1,
+        width: area.width.saturating_sub(4),
+        height: area.height.saturating_sub(2),
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2), // description
+            Constraint::Length(3), // code input
+            Constraint::Length(1), // spacer
+            Constraint::Length(1), // error
+            Constraint::Min(1),    // hints
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new("Enter the 6-digit code from your authenticator app.")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center),
+        chunks[0],
+    );
+
+    let code_display = format!("{code}█");
+    frame.render_widget(
+        Paragraph::new(code_display).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Code")
+                .border_style(Style::default().fg(Color::Cyan)),
+        ),
+        chunks[1],
+    );
+
+    if let Some(err) = error {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                err,
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ))
+            .alignment(Alignment::Center),
+            chunks[3],
+        );
+    }
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled(" Verify   ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(" Back", Style::default().fg(Color::DarkGray)),
+        ]))
+        .alignment(Alignment::Center),
+        chunks[4],
     );
 }

@@ -10,6 +10,12 @@ pub enum AppMode {
         field: usize,       // 0=email, 1=password, 2=tenant picker
         error: Option<String>,
     },
+    MfaChallenge {
+        mfa_token: String,
+        slug: String,
+        code: String,
+        error: Option<String>,
+    },
     Admin,
 }
 

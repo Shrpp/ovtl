@@ -213,3 +213,44 @@ pub async fn cleanup_expired_tokens(db: &DatabaseConnection) -> Result<u64, AppE
         .await?;
     Ok(result.rows_affected)
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MfaClaims {
+    pub sub: String,
+    pub tid: String,
+    pub iat: i64,
+    pub exp: i64,
+    pub purpose: String,
+}
+
+pub fn generate_mfa_token(user_id: Uuid, tenant_id: Uuid, secret: &str) -> Result<String, AppError> {
+    let now = Utc::now().timestamp();
+    let claims = MfaClaims {
+        sub: user_id.to_string(),
+        tid: tenant_id.to_string(),
+        iat: now,
+        exp: now + 5 * 60,
+        purpose: "mfa_challenge".into(),
+    };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| AppError::TokenError(e.to_string()))
+}
+
+pub fn verify_mfa_token(token: &str, secret: &str) -> Result<MfaClaims, AppError> {
+    let claims = decode::<MfaClaims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &Validation::default(),
+    )
+    .map(|d| d.claims)
+    .map_err(|e| AppError::TokenError(e.to_string()))?;
+
+    if claims.purpose != "mfa_challenge" {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(claims)
+}
