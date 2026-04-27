@@ -10,6 +10,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, table: &mut StatefulTabl
         .clients
         .iter()
         .map(|c| {
+            let client_type = if c.grant_types.iter().any(|g| g == "client_credentials") {
+                "M2M"
+            } else if !c.is_confidential {
+                "SPA"
+            } else {
+                "Conf"
+            };
             let ttl = match (c.access_token_ttl_minutes, c.refresh_token_ttl_days) {
                 (Some(a), Some(r)) => format!("{a}m/{r}d"),
                 (Some(a), None) => format!("{a}m/—"),
@@ -17,16 +24,16 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, table: &mut StatefulTabl
                 (None, None) => "—".into(),
             };
             vec![
-                c.id[..8].to_string() + "…",
                 c.name.clone(),
+                client_type.into(),
                 c.client_id[..8].to_string() + "…",
                 c.scopes.join(" "),
                 ttl,
-                if c.is_active { "active".into() } else { "inactive".into() },
+                if c.is_active { "✓".into() } else { "✗".into() },
             ]
         })
         .collect();
 
     table.select(app.client_selected);
-    table.render(frame, area, &title, &["ID", "Name", "Client ID", "Scopes", "TTL", "Active"], rows);
+    table.render(frame, area, &title, &["Name", "Type", "Client ID", "Scopes", "TTL", "Active"], rows);
 }

@@ -80,6 +80,7 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         ("↑↓", "Navigate"),
                         ("n", "New"),
                         ("e", "Edit"),
+                        ("r", "Roles"),
                         ("d", "Delete"),
                         ("q", "Quit"),
                     ],
@@ -245,6 +246,9 @@ pub async fn run(mut app: App) -> io::Result<()> {
                 }
                 Modal::UserRoles { email, all_roles, selected, .. } => {
                     modal::render_user_roles(frame, email, all_roles, *selected);
+                }
+                Modal::ClientRoles { client_name, all_roles, selected, .. } => {
+                    modal::render_user_roles(frame, client_name, all_roles, *selected);
                 }
             }
         })?;
@@ -543,6 +547,33 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     let entries = all_roles.clone();
                     app.modal = Modal::None;
                     perform_save_user_roles(app, uid, entries).await;
+                }
+                _ => {}
+            }
+            return;
+        }
+        Modal::ClientRoles { client_id, client_name, mut all_roles, mut selected } => {
+            match code {
+                KeyCode::Esc => app.modal = Modal::None,
+                KeyCode::Up => {
+                    if selected > 0 { selected -= 1; }
+                    app.modal = Modal::ClientRoles { client_id, client_name, all_roles, selected };
+                }
+                KeyCode::Down => {
+                    if selected + 1 < all_roles.len() { selected += 1; }
+                    app.modal = Modal::ClientRoles { client_id, client_name, all_roles, selected };
+                }
+                KeyCode::Char(' ') => {
+                    if let Some(entry) = all_roles.get_mut(selected) {
+                        entry.2 = !entry.2;
+                    }
+                    app.modal = Modal::ClientRoles { client_id, client_name, all_roles, selected };
+                }
+                KeyCode::Enter => {
+                    let cid = client_id.clone();
+                    let entries = all_roles.clone();
+                    app.modal = Modal::None;
+                    perform_save_client_roles(app, cid, entries).await;
                 }
                 _ => {}
             }
@@ -1121,6 +1152,13 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
                 }
             }
         },
+        KeyCode::Char('r') => {
+            if app.tab == Tab::Clients {
+                if let (Some(c), Some(tid)) = (app.selected_client().cloned(), app.active_tenant_id.clone()) {
+                    open_client_roles(app, c.id, c.name, tid).await;
+                }
+            }
+        }
         KeyCode::Char('d') => match app.tab {
             Tab::Clients => {
                 if let Some(c) = app.selected_client() {
@@ -1172,46 +1210,28 @@ async fn load_all(app: &mut App) {
     );
 
     match clients_r {
-        Ok(list) => {
-            app.client_selected = app.client_selected.min(list.len().saturating_sub(1));
-            app.clients = list;
-        }
-        Err(e) => app.set_status(format!("Clients error: {e}")),
+        Ok(list) => { app.client_selected = app.client_selected.min(list.len().saturating_sub(1)); app.clients = list; }
+        Err(e) => { on_load_err(app, e, "Clients"); return; }
     }
     match users_r {
-        Ok(list) => {
-            app.user_selected = app.user_selected.min(list.len().saturating_sub(1));
-            app.users = list;
-        }
-        Err(e) => app.set_status(format!("Users error: {e}")),
+        Ok(list) => { app.user_selected = app.user_selected.min(list.len().saturating_sub(1)); app.users = list; }
+        Err(e) => { on_load_err(app, e, "Users"); return; }
     }
     match roles_r {
-        Ok(list) => {
-            app.role_selected = app.role_selected.min(list.len().saturating_sub(1));
-            app.roles = list;
-        }
-        Err(e) => app.set_status(format!("Roles error: {e}")),
+        Ok(list) => { app.role_selected = app.role_selected.min(list.len().saturating_sub(1)); app.roles = list; }
+        Err(e) => { on_load_err(app, e, "Roles"); return; }
     }
     match perms_r {
-        Ok(list) => {
-            app.permission_selected = app.permission_selected.min(list.len().saturating_sub(1));
-            app.permissions = list;
-        }
-        Err(e) => app.set_status(format!("Permissions error: {e}")),
+        Ok(list) => { app.permission_selected = app.permission_selected.min(list.len().saturating_sub(1)); app.permissions = list; }
+        Err(e) => { on_load_err(app, e, "Permissions"); return; }
     }
     match sessions_r {
-        Ok(list) => {
-            app.session_selected = app.session_selected.min(list.len().saturating_sub(1));
-            app.sessions = list;
-        }
-        Err(e) => app.set_status(format!("Sessions error: {e}")),
+        Ok(list) => { app.session_selected = app.session_selected.min(list.len().saturating_sub(1)); app.sessions = list; }
+        Err(e) => { on_load_err(app, e, "Sessions"); return; }
     }
     match idps_r {
-        Ok(list) => {
-            app.idp_selected = app.idp_selected.min(list.len().saturating_sub(1));
-            app.identity_providers = list;
-        }
-        Err(e) => app.set_status(format!("IdP error: {e}")),
+        Ok(list) => { app.idp_selected = app.idp_selected.min(list.len().saturating_sub(1)); app.identity_providers = list; }
+        Err(e) => on_load_err(app, e, "IdP"),
     }
 }
 
@@ -1246,11 +1266,8 @@ async fn load_clients(app: &mut App, tenant_id: String) {
     app.client_selected = 0;
     app.clients_loading = true;
     match app.client.list_clients(&tenant_id).await {
-        Ok(list) => {
-            app.clients = list;
-            app.clear_status();
-        }
-        Err(e) => app.set_status(format!("Error: {e}")),
+        Ok(list) => { app.clients = list; app.clear_status(); }
+        Err(e) => on_load_err(app, e, "Clients"),
     }
     app.clients_loading = false;
 }
@@ -1260,11 +1277,8 @@ async fn load_users(app: &mut App, tenant_id: String) {
     app.user_selected = 0;
     app.users_loading = true;
     match app.client.list_users(&tenant_id).await {
-        Ok(list) => {
-            app.users = list;
-            app.clear_status();
-        }
-        Err(e) => app.set_status(format!("Error: {e}")),
+        Ok(list) => { app.users = list; app.clear_status(); }
+        Err(e) => on_load_err(app, e, "Users"),
     }
     app.users_loading = false;
 }
@@ -1274,11 +1288,8 @@ async fn load_roles(app: &mut App, tenant_id: String) {
     app.role_selected = 0;
     app.roles_loading = true;
     match app.client.list_roles(&tenant_id).await {
-        Ok(list) => {
-            app.roles = list;
-            app.clear_status();
-        }
-        Err(e) => app.set_status(format!("Error: {e}")),
+        Ok(list) => { app.roles = list; app.clear_status(); }
+        Err(e) => on_load_err(app, e, "Roles"),
     }
     app.roles_loading = false;
 }
@@ -1288,11 +1299,8 @@ async fn load_sessions(app: &mut App, tenant_id: String) {
     app.session_selected = 0;
     app.sessions_loading = true;
     match app.client.list_sessions(&tenant_id).await {
-        Ok(list) => {
-            app.sessions = list;
-            app.clear_status();
-        }
-        Err(e) => app.set_status(format!("Error: {e}")),
+        Ok(list) => { app.sessions = list; app.clear_status(); }
+        Err(e) => on_load_err(app, e, "Sessions"),
     }
     app.sessions_loading = false;
 }
@@ -1603,6 +1611,72 @@ async fn perform_save_user_roles(
     app.set_status("Roles saved");
 }
 
+async fn open_client_roles(app: &mut App, client_id: String, client_name: String, tid: String) {
+    let api = app.client.clone();
+    let (all_roles_r, assigned_r) = tokio::join!(
+        api.list_roles(&tid),
+        api.list_client_roles(&tid, &client_id),
+    );
+    let all_roles = match all_roles_r {
+        Ok(r) => r,
+        Err(e) => { app.modal = Modal::Error(format!("Failed to load roles: {e}")); return; }
+    };
+    let assigned_ids: std::collections::HashSet<String> = match assigned_r {
+        Ok(r) => r.iter().map(|r| r.id.clone()).collect(),
+        Err(e) => { app.modal = Modal::Error(format!("Failed to load client roles: {e}")); return; }
+    };
+    let entries: Vec<(String, String, bool)> = all_roles
+        .iter()
+        .map(|r| (r.id.clone(), r.name.clone(), assigned_ids.contains(&r.id)))
+        .collect();
+    app.modal = Modal::ClientRoles { client_id, client_name, all_roles: entries, selected: 0 };
+}
+
+async fn perform_save_client_roles(
+    app: &mut App,
+    client_id: String,
+    entries: Vec<(String, String, bool)>,
+) {
+    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let api = app.client.clone();
+    for (role_id, _, assigned) in &entries {
+        if *assigned {
+            let _ = api.assign_client_role(&tid, &client_id, role_id).await;
+        } else {
+            let _ = api.revoke_client_role(&tid, &client_id, role_id).await;
+        }
+    }
+    app.set_status("Client roles saved");
+}
+
+fn reset_to_login(app: &mut App, msg: &str) {
+    app.client = crate::api::Client::new(app.client.base_url.clone());
+    app.mode = AppMode::Login {
+        email: String::new(),
+        password: String::new(),
+        slug: String::from("master"),
+        slug_idx: 0,
+        field: 0,
+        error: Some(msg.to_string()),
+    };
+    app.active_tenant_id = None;
+    app.clients = vec![];
+    app.users = vec![];
+    app.roles = vec![];
+    app.permissions = vec![];
+    app.sessions = vec![];
+    app.identity_providers = vec![];
+    app.modal = Modal::None;
+}
+
+fn on_load_err(app: &mut App, e: crate::api::ApiError, ctx: &str) {
+    if let crate::api::ApiError::Api { status: 401, .. } = &e {
+        reset_to_login(app, "Session expired — please log in again");
+    } else {
+        app.set_status(format!("{ctx} error: {e}"));
+    }
+}
+
 async fn perform_edit_client(
     app: &mut App,
     id: String,
@@ -1644,11 +1718,8 @@ async fn load_idps(app: &mut App, tenant_id: String) {
     app.idp_selected = 0;
     app.idps_loading = true;
     match app.client.list_identity_providers(&tenant_id).await {
-        Ok(list) => {
-            app.identity_providers = list;
-            app.clear_status();
-        }
-        Err(e) => app.set_status(format!("Error: {e}")),
+        Ok(list) => { app.identity_providers = list; app.clear_status(); }
+        Err(e) => on_load_err(app, e, "IdP"),
     }
     app.idps_loading = false;
 }
@@ -1697,11 +1768,8 @@ async fn load_permissions(app: &mut App, tenant_id: String) {
     app.permission_selected = 0;
     app.permissions_loading = true;
     match app.client.list_permissions(&tenant_id).await {
-        Ok(list) => {
-            app.permissions = list;
-            app.clear_status();
-        }
-        Err(e) => app.set_status(format!("Error: {e}")),
+        Ok(list) => { app.permissions = list; app.clear_status(); }
+        Err(e) => on_load_err(app, e, "Permissions"),
     }
     app.permissions_loading = false;
 }

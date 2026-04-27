@@ -196,6 +196,45 @@ impl Client {
         self.check(resp).await
     }
 
+    // ── Client Roles ──────────────────────────────────────────────────────────
+
+    pub async fn list_client_roles(&self, tenant_id: &str, client_id: &str) -> ApiResult<Vec<Role>> {
+        let resp = self
+            .inner
+            .get(format!("{}/clients/{}/roles", self.base_url, client_id))
+            .headers(self.tenant_headers(tenant_id))
+            .send()
+            .await?;
+        self.check(resp).await
+    }
+
+    pub async fn assign_client_role(&self, tenant_id: &str, client_id: &str, role_id: &str) -> ApiResult<()> {
+        let resp = self
+            .inner
+            .post(format!("{}/clients/{}/roles", self.base_url, client_id))
+            .headers(self.tenant_headers(tenant_id))
+            .json(&serde_json::json!({ "role_id": role_id }))
+            .send()
+            .await?;
+        let status = resp.status();
+        if status.is_success() { Ok(()) } else {
+            Err(ApiError::Api { status: status.as_u16(), message: "assign failed".into() })
+        }
+    }
+
+    pub async fn revoke_client_role(&self, tenant_id: &str, client_id: &str, role_id: &str) -> ApiResult<()> {
+        let resp = self
+            .inner
+            .delete(format!("{}/clients/{}/roles/{}", self.base_url, client_id, role_id))
+            .headers(self.tenant_headers(tenant_id))
+            .send()
+            .await?;
+        let status = resp.status();
+        if status.is_success() { Ok(()) } else {
+            Err(ApiError::Api { status: status.as_u16(), message: "revoke failed".into() })
+        }
+    }
+
     // ── Identity Providers ────────────────────────────────────────────────────
 
     pub async fn list_identity_providers(&self, tenant_id: &str) -> ApiResult<Vec<IdentityProvider>> {
