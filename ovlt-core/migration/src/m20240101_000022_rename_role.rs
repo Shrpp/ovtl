@@ -11,8 +11,8 @@ impl MigrationTrait for Migration {
             .execute_unprepared(
                 "DO $$
                 BEGIN
-                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ovlt_rls') THEN
-                        ALTER ROLE ovlt_rls RENAME TO ovlt_rls;
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ovtl_rls') THEN
+                        ALTER ROLE ovtl_rls RENAME TO ovlt_rls;
                     END IF;
                 END
                 $$;",
@@ -28,7 +28,7 @@ impl MigrationTrait for Migration {
                 "DO $$
                 BEGIN
                     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ovlt_rls') THEN
-                        ALTER ROLE ovlt_rls RENAME TO ovlt_rls;
+                        ALTER ROLE ovlt_rls RENAME TO ovtl_rls;
                     END IF;
                 END
                 $$;",
