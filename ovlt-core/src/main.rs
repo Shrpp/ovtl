@@ -20,6 +20,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::json;
 use std::net::SocketAddr;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use sysinfo::{Pid, System};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -103,6 +104,7 @@ async fn main() {
         .expect("invalid server address");
 
     info!("OVLT running on {addr}");
+    log_startup_stats();
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
@@ -188,6 +190,27 @@ fn build_cors(origins: &[String]) -> CorsLayer {
 
 async fn health() -> Json<serde_json::Value> {
     Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }))
+}
+
+fn log_startup_stats() {
+    let pid = std::process::id();
+    let mut sys = System::new();
+    sys.refresh_processes();
+
+    let (rss_mb, threads) = sys
+        .process(Pid::from(pid as usize))
+        .map(|p| (p.memory() / 1024 / 1024, p.tasks().map_or(0, |t| t.len())))
+        .unwrap_or((0, 0));
+
+    let cpus = sys.cpus().len();
+
+    info!(
+        rss_mb,
+        threads,
+        cpus,
+        version = env!("CARGO_PKG_VERSION"),
+        "startup stats"
+    );
 }
 
 fn init_tracing(production: bool) {

@@ -1,3 +1,5 @@
+use base64::{engine::general_purpose::STANDARD, Engine};
+use rand::RngCore;
 use std::env;
 
 #[derive(Clone, Debug)]
@@ -47,24 +49,55 @@ pub enum Environment {
     Production,
 }
 
+fn gen_secret() -> String {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    STANDARD.encode(bytes)
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, String> {
-        let jwt_secret = require("JWT_SECRET")?;
+        let (jwt_secret, master_encryption_key, tenant_wrap_key, generated) = {
+            let jwt   = env::var("JWT_SECRET").ok();
+            let mek   = env::var("MASTER_ENCRYPTION_KEY").ok();
+            let twk   = env::var("TENANT_WRAP_KEY").ok();
+
+            let any_missing = jwt.is_none() || mek.is_none() || twk.is_none();
+
+            let jwt_secret           = jwt.unwrap_or_else(gen_secret);
+            let master_encryption_key = mek.unwrap_or_else(gen_secret);
+            let mut tenant_wrap_key  = twk.unwrap_or_else(gen_secret);
+            while tenant_wrap_key == master_encryption_key {
+                tenant_wrap_key = gen_secret();
+            }
+
+            (jwt_secret, master_encryption_key, tenant_wrap_key, any_missing)
+        };
+
         if jwt_secret.len() < 32 {
             return Err("JWT_SECRET must be at least 32 characters".into());
         }
-
-        let master_encryption_key = require("MASTER_ENCRYPTION_KEY")?;
         if master_encryption_key.len() < 32 {
             return Err("MASTER_ENCRYPTION_KEY must be at least 32 characters".into());
         }
-
-        let tenant_wrap_key = require("TENANT_WRAP_KEY")?;
         if tenant_wrap_key.len() < 32 {
             return Err("TENANT_WRAP_KEY must be at least 32 characters".into());
         }
-        if tenant_wrap_key == master_encryption_key {
-            return Err("TENANT_WRAP_KEY must differ from MASTER_ENCRYPTION_KEY".into());
+
+        if generated {
+            eprintln!();
+            eprintln!("  ╔══════════════════════════════════════════════════════╗");
+            eprintln!("  ║           OVLT — FIRST RUN: SECRETS GENERATED       ║");
+            eprintln!("  ║                                                      ║");
+            eprintln!("  ║  Save these to your .env — losing them means        ║");
+            eprintln!("  ║  ALL encrypted data becomes UNRECOVERABLE.          ║");
+            eprintln!("  ║                                                      ║");
+            eprintln!("  ║  JWT_SECRET={}  ║", &jwt_secret);
+            eprintln!("  ║  MASTER_ENCRYPTION_KEY={}  ║", &master_encryption_key);
+            eprintln!("  ║  TENANT_WRAP_KEY={}  ║", &tenant_wrap_key);
+            eprintln!("  ║                                                      ║");
+            eprintln!("  ╚══════════════════════════════════════════════════════╝");
+            eprintln!();
         }
 
         let environment = match env::var("ENVIRONMENT")
