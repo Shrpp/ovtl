@@ -13,7 +13,6 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/identity-providers/:id",
-            put(admin_identity_providers::update_idp)
-                .delete(admin_identity_providers::delete_idp),
+            put(admin_identity_providers::update_idp).delete(admin_identity_providers::delete_idp),
         )
 }

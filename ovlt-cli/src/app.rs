@@ -1,13 +1,15 @@
-use crate::api::{AuditLogEntry, Client, IdentityProvider, OAuthClient, Permission, Role, Session, Tenant, User};
+use crate::api::{
+    AuditLogEntry, Client, IdentityProvider, OAuthClient, Permission, Role, Session, Tenant, User,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
     Login {
         email: String,
         password: String,
-        slug: String,       // currently selected slug
-        slug_idx: usize,    // selected index in App::tenant_options (usize::MAX = custom text)
-        field: usize,       // 0=email, 1=password, 2=tenant picker
+        slug: String,    // currently selected slug
+        slug_idx: usize, // selected index in App::tenant_options (usize::MAX = custom text)
+        field: usize,    // 0=email, 1=password, 2=tenant picker
         error: Option<String>,
     },
     MfaChallenge {
@@ -93,7 +95,7 @@ pub struct QuickStartState {
     pub client_name: String,
     pub redirect_uri: String,
     pub scopes: String,
-    pub client_type: u8,  // 0=Confidential, 1=SPA/Mobile, 2=Machine
+    pub client_type: u8, // 0=Confidential, 1=SPA/Mobile, 2=Machine
     // Step 3 — user
     pub user_email: String,
     pub user_password: String,
@@ -134,38 +136,101 @@ impl Default for QuickStartState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modal {
     None,
-    CreateTenant { name: String, slug: String, field: usize },
-    CreateClient { name: String, redirect_uri: String, scopes: String, client_type: u8, field: usize },
-    CreateUser { email: String, password: String, field: usize },
-    ConfirmDelete { id: String, label: String },
-    ShowSecret { client_id: String, secret: String },
+    CreateTenant {
+        name: String,
+        slug: String,
+        field: usize,
+    },
+    CreateClient {
+        name: String,
+        redirect_uri: String,
+        scopes: String,
+        client_type: u8,
+        field: usize,
+    },
+    CreateUser {
+        email: String,
+        password: String,
+        field: usize,
+    },
+    ConfirmDelete {
+        id: String,
+        label: String,
+    },
+    ShowSecret {
+        client_id: String,
+        secret: String,
+    },
     Error(String),
     QuickStart(QuickStartState),
-    EditClient { id: String, name: String, redirect_uris: String, scopes: String, access_token_ttl: String, refresh_token_ttl: String, client_type: u8, field: usize },
-    CreateIdp { provider: String, client_id: String, client_secret: String, redirect_url: String, scopes: String, field: usize },
-    EditIdp { id: String, provider: String, client_id: String, client_secret: String, redirect_url: String, scopes: String, enabled: bool, field: usize },
+    EditClient {
+        id: String,
+        name: String,
+        redirect_uris: String,
+        scopes: String,
+        access_token_ttl: String,
+        refresh_token_ttl: String,
+        client_type: u8,
+        field: usize,
+    },
+    CreateIdp {
+        provider: String,
+        client_id: String,
+        client_secret: String,
+        redirect_url: String,
+        scopes: String,
+        field: usize,
+    },
+    EditIdp {
+        id: String,
+        provider: String,
+        client_id: String,
+        client_secret: String,
+        redirect_url: String,
+        scopes: String,
+        enabled: bool,
+        field: usize,
+    },
     EditUser {
         id: String,
         email: String,
         password: String,
         is_active: bool,
-        all_roles: Vec<(String, String, bool)>,  // (id, name, assigned)
-        permissions: Vec<String>,                 // derived from assigned roles, read-only
-        field: usize,   // 0=email, 1=password, 2=is_active, 3=roles section
+        all_roles: Vec<(String, String, bool)>, // (id, name, assigned)
+        permissions: Vec<String>,               // derived from assigned roles, read-only
+        field: usize,                           // 0=email, 1=password, 2=is_active, 3=roles section
         role_selected: usize,
     },
-    CreateRole { name: String, description: String, field: usize },
+    CreateRole {
+        name: String,
+        description: String,
+        field: usize,
+    },
     EditRole {
         id: String,
         name: String,
         description: String,
-        all_permissions: Vec<(String, String, bool)>,  // (id, name, assigned)
-        field: usize,      // 0=name, 1=description, 2=permissions section
+        all_permissions: Vec<(String, String, bool)>, // (id, name, assigned)
+        field: usize, // 0=name, 1=description, 2=permissions section
         perm_selected: usize,
     },
-    CreatePermission { name: String, description: String, field: usize },
-    EditPermission { id: String, name: String, description: String, field: usize },
-    ClientRoles { client_id: String, client_name: String, all_roles: Vec<(String, String, bool)>, selected: usize },
+    CreatePermission {
+        name: String,
+        description: String,
+        field: usize,
+    },
+    EditPermission {
+        id: String,
+        name: String,
+        description: String,
+        field: usize,
+    },
+    ClientRoles {
+        client_id: String,
+        client_name: String,
+        all_roles: Vec<(String, String, bool)>,
+        selected: usize,
+    },
 }
 
 pub struct App {
@@ -175,7 +240,7 @@ pub struct App {
     pub tab: Tab,
     pub modal: Modal,
 
-    pub tenant_options: Vec<(String, String)>,  // (slug, name) fetched before login
+    pub tenant_options: Vec<(String, String)>, // (slug, name) fetched before login
 
     pub tenants: Vec<Tenant>,
     pub tenant_selected: usize,

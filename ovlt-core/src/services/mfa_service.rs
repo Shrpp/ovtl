@@ -35,7 +35,8 @@ fn urlencoding(s: &str) -> String {
 }
 
 pub fn verify_code(secret_b32: &str, code: &str) -> bool {
-    let Some(secret_bytes) = base32::decode(Alphabet::RFC4648 { padding: false }, secret_b32) else {
+    let Some(secret_bytes) = base32::decode(Alphabet::RFC4648 { padding: false }, secret_b32)
+    else {
         return false;
     };
     let now = std::time::SystemTime::now()

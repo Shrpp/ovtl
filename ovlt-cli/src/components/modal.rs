@@ -32,7 +32,10 @@ pub fn render_confirm(frame: &mut Frame, label: &str) {
         Line::from(format!("Delete: {label}")),
         Line::from(""),
         Line::from(vec![
-            Span::styled("[y]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[y]",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Yes   "),
             Span::styled("[n]", Style::default().fg(Color::Green)),
             Span::raw(" No"),
@@ -77,9 +80,17 @@ pub fn render_secret(frame: &mut Frame, client_id: &str, secret: &str) {
         Line::from(""),
         Line::from(format!("Client ID: {client_id}")),
         Line::from(""),
-        Line::from(Span::styled(secret, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            secret,
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
-        Line::from(Span::styled("[Enter] Close", Style::default().fg(Color::DarkGray))),
+        Line::from(Span::styled(
+            "[Enter] Close",
+            Style::default().fg(Color::DarkGray),
+        )),
     ];
 
     let para = Paragraph::new(text)
@@ -115,17 +126,22 @@ pub fn render_edit_user(
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(block, area);
 
-    let inner = Rect { x: area.x + 2, y: area.y + 1, width: area.width - 4, height: area.height - 2 };
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 1,
+        width: area.width - 4,
+        height: area.height - 2,
+    };
 
     let constraints = vec![
-        Constraint::Length(3),           // email field
-        Constraint::Length(3),           // password field
-        Constraint::Length(2),           // is_active + separator
-        Constraint::Length(1),           // roles header
+        Constraint::Length(3),             // email field
+        Constraint::Length(3),             // password field
+        Constraint::Length(2),             // is_active + separator
+        Constraint::Length(1),             // roles header
         Constraint::Length(roles_visible), // roles list
-        Constraint::Length(1),           // permissions header
+        Constraint::Length(1),             // permissions header
         Constraint::Length(perms_visible), // permissions
-        Constraint::Length(1),           // hint
+        Constraint::Length(1),             // hint
     ];
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -137,8 +153,16 @@ pub fn render_edit_user(
     let email_block = Block::default()
         .title("Email")
         .borders(Borders::ALL)
-        .border_style(if email_active { Style::default().fg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) });
-    let email_display = if email_active { format!("{email}█") } else { email.to_string() };
+        .border_style(if email_active {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        });
+    let email_display = if email_active {
+        format!("{email}█")
+    } else {
+        email.to_string()
+    };
     frame.render_widget(Paragraph::new(email_display).block(email_block), chunks[0]);
 
     // Password
@@ -146,29 +170,60 @@ pub fn render_edit_user(
     let pw_block = Block::default()
         .title("Password (leave blank to keep)")
         .borders(Borders::ALL)
-        .border_style(if pw_active { Style::default().fg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) });
-    let pw_display = if pw_active { format!("{}█", "•".repeat(password.len())) } else { "•".repeat(password.len()) };
+        .border_style(if pw_active {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        });
+    let pw_display = if pw_active {
+        format!("{}█", "•".repeat(password.len()))
+    } else {
+        "•".repeat(password.len())
+    };
     frame.render_widget(Paragraph::new(pw_display).block(pw_block), chunks[1]);
 
     // is_active + separator
     let status_active = field == 2;
     let status_color = if is_active { Color::Green } else { Color::Red };
-    let status_text = if is_active { "● active" } else { "○ inactive" };
+    let status_text = if is_active {
+        "● active"
+    } else {
+        "○ inactive"
+    };
     let active_indicator = if status_active { " ◀ focused" } else { "" };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("Status  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(status_text, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("  [Space]{active_indicator}"), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                status_text,
+                Style::default()
+                    .fg(status_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  [Space]{active_indicator}"),
+                Style::default().fg(Color::DarkGray),
+            ),
         ])),
         chunks[2],
     );
 
     // Roles header
     let roles_active = field == 3;
-    let roles_label = if roles_active { "── Roles [Space=toggle] ──" } else { "── Roles ──" };
+    let roles_label = if roles_active {
+        "── Roles [Space=toggle] ──"
+    } else {
+        "── Roles ──"
+    };
     frame.render_widget(
-        Paragraph::new(Span::styled(roles_label, Style::default().fg(if roles_active { Color::Cyan } else { Color::DarkGray }))),
+        Paragraph::new(Span::styled(
+            roles_label,
+            Style::default().fg(if roles_active {
+                Color::Cyan
+            } else {
+                Color::DarkGray
+            }),
+        )),
         chunks[3],
     );
 
@@ -183,8 +238,16 @@ pub fn render_edit_user(
             let actual_idx = visible_start + i;
             let is_sel = roles_active && actual_idx == role_selected;
             let bullet = if *assigned { "●" } else { "○" };
-            let color = if *assigned { Color::Cyan } else { Color::DarkGray };
-            let bg = if is_sel { Color::DarkGray } else { Color::Reset };
+            let color = if *assigned {
+                Color::Cyan
+            } else {
+                Color::DarkGray
+            };
+            let bg = if is_sel {
+                Color::DarkGray
+            } else {
+                Color::Reset
+            };
             ListItem::new(Line::from(vec![
                 Span::styled(format!("{bullet} "), Style::default().fg(color)),
                 Span::styled(name.as_str(), Style::default().fg(Color::White).bg(bg)),
@@ -197,21 +260,29 @@ pub fn render_edit_user(
 
     // Permissions header
     frame.render_widget(
-        Paragraph::new(Span::styled("── Permissions (from roles, read-only) ──", Style::default().fg(Color::DarkGray))),
+        Paragraph::new(Span::styled(
+            "── Permissions (from roles, read-only) ──",
+            Style::default().fg(Color::DarkGray),
+        )),
         chunks[5],
     );
 
     // Permissions list
     let perm_items: Vec<ListItem> = if permissions.is_empty() {
-        vec![ListItem::new(Span::styled("  (none)", Style::default().fg(Color::DarkGray)))]
+        vec![ListItem::new(Span::styled(
+            "  (none)",
+            Style::default().fg(Color::DarkGray),
+        ))]
     } else {
         permissions
             .iter()
             .take(perms_visible as usize)
-            .map(|p| ListItem::new(Line::from(vec![
-                Span::styled("  ● ", Style::default().fg(Color::Yellow)),
-                Span::styled(p.as_str(), Style::default().fg(Color::White)),
-            ])))
+            .map(|p| {
+                ListItem::new(Line::from(vec![
+                    Span::styled("  ● ", Style::default().fg(Color::Yellow)),
+                    Span::styled(p.as_str(), Style::default().fg(Color::White)),
+                ]))
+            })
             .collect()
     };
     let mut dummy_state2 = ListState::default();
@@ -226,7 +297,10 @@ pub fn render_edit_user(
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::styled(" Cancel", Style::default().fg(Color::DarkGray)),
     ]);
-    frame.render_widget(Paragraph::new(hints).alignment(Alignment::Center), chunks[7]);
+    frame.render_widget(
+        Paragraph::new(hints).alignment(Alignment::Center),
+        chunks[7],
+    );
 }
 
 /// Role editor: name, description, permissions (toggle).
@@ -250,7 +324,12 @@ pub fn render_edit_role(
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(block, area);
 
-    let inner = Rect { x: area.x + 2, y: area.y + 1, width: area.width - 4, height: area.height - 2 };
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 1,
+        width: area.width - 4,
+        height: area.height - 2,
+    };
 
     let constraints = vec![
         Constraint::Length(3),
@@ -270,9 +349,18 @@ pub fn render_edit_role(
     let name_block = Block::default()
         .title("Name")
         .borders(Borders::ALL)
-        .border_style(if name_active { Style::default().fg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) });
+        .border_style(if name_active {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        });
     frame.render_widget(
-        Paragraph::new(if name_active { format!("{name}█") } else { name.to_string() }).block(name_block),
+        Paragraph::new(if name_active {
+            format!("{name}█")
+        } else {
+            name.to_string()
+        })
+        .block(name_block),
         chunks[0],
     );
 
@@ -281,24 +369,47 @@ pub fn render_edit_role(
     let desc_block = Block::default()
         .title("Description")
         .borders(Borders::ALL)
-        .border_style(if desc_active { Style::default().fg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) });
+        .border_style(if desc_active {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        });
     frame.render_widget(
-        Paragraph::new(if desc_active { format!("{description}█") } else { description.to_string() }).block(desc_block),
+        Paragraph::new(if desc_active {
+            format!("{description}█")
+        } else {
+            description.to_string()
+        })
+        .block(desc_block),
         chunks[1],
     );
 
     // Permissions header
     let perms_active = field == 2;
-    let perms_label = if perms_active { "── Permissions [Space=toggle] ──" } else { "── Permissions ──" };
+    let perms_label = if perms_active {
+        "── Permissions [Space=toggle] ──"
+    } else {
+        "── Permissions ──"
+    };
     frame.render_widget(
-        Paragraph::new(Span::styled(perms_label, Style::default().fg(if perms_active { Color::Cyan } else { Color::DarkGray }))),
+        Paragraph::new(Span::styled(
+            perms_label,
+            Style::default().fg(if perms_active {
+                Color::Cyan
+            } else {
+                Color::DarkGray
+            }),
+        )),
         chunks[2],
     );
 
     // Permissions list
     let visible_start = perm_selected.saturating_sub(perms_visible.saturating_sub(1) as usize);
     let perm_items: Vec<ListItem> = if all_permissions.is_empty() {
-        vec![ListItem::new(Span::styled("  (no permissions defined yet)", Style::default().fg(Color::DarkGray)))]
+        vec![ListItem::new(Span::styled(
+            "  (no permissions defined yet)",
+            Style::default().fg(Color::DarkGray),
+        ))]
     } else {
         all_permissions
             .iter()
@@ -309,8 +420,16 @@ pub fn render_edit_role(
                 let actual_idx = visible_start + i;
                 let is_sel = perms_active && actual_idx == perm_selected;
                 let bullet = if *assigned { "●" } else { "○" };
-                let color = if *assigned { Color::Yellow } else { Color::DarkGray };
-                let bg = if is_sel { Color::DarkGray } else { Color::Reset };
+                let color = if *assigned {
+                    Color::Yellow
+                } else {
+                    Color::DarkGray
+                };
+                let bg = if is_sel {
+                    Color::DarkGray
+                } else {
+                    Color::Reset
+                };
                 ListItem::new(Line::from(vec![
                     Span::styled(format!("{bullet} "), Style::default().fg(color)),
                     Span::styled(name.as_str(), Style::default().fg(Color::White).bg(bg)),
@@ -330,7 +449,10 @@ pub fn render_edit_role(
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::styled(" Cancel", Style::default().fg(Color::DarkGray)),
     ]);
-    frame.render_widget(Paragraph::new(hints).alignment(Alignment::Center), chunks[5]);
+    frame.render_widget(
+        Paragraph::new(hints).alignment(Alignment::Center),
+        chunks[5],
+    );
 }
 
 /// (role_id, role_name, is_assigned)
@@ -350,7 +472,12 @@ pub fn render_user_roles(
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(block, area);
 
-    let inner = Rect { x: area.x + 2, y: area.y + 1, width: area.width - 4, height: area.height - 2 };
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 1,
+        width: area.width - 4,
+        height: area.height - 2,
+    };
 
     let mut constraints: Vec<ratatui::layout::Constraint> = all_roles
         .iter()
@@ -367,8 +494,16 @@ pub fn render_user_roles(
     for (i, (_id, name, assigned)) in all_roles.iter().enumerate() {
         let is_sel = i == selected;
         let bullet = if *assigned { "●" } else { "○" };
-        let color = if *assigned { Color::Cyan } else { Color::DarkGray };
-        let bg = if is_sel { Color::DarkGray } else { Color::Reset };
+        let color = if *assigned {
+            Color::Cyan
+        } else {
+            Color::DarkGray
+        };
+        let bg = if is_sel {
+            Color::DarkGray
+        } else {
+            Color::Reset
+        };
         let line = Line::from(vec![
             Span::styled(format!("{bullet} "), Style::default().fg(color)),
             Span::styled(name.as_str(), Style::default().fg(Color::White).bg(bg)),
@@ -409,7 +544,12 @@ pub fn render_create_client(
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(block, area);
 
-    let inner = Rect { x: area.x + 2, y: area.y + 1, width: area.width - 4, height: area.height - 2 };
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 1,
+        width: area.width - 4,
+        height: area.height - 2,
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -424,30 +564,61 @@ pub fn render_create_client(
         .split(inner);
 
     let border = |active: bool| {
-        if active { Style::default().fg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) }
+        if active {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
     };
 
     // Name
     let a = field == 0;
     frame.render_widget(
-        Paragraph::new(if a { format!("{name}█") } else { name.to_string() })
-            .block(Block::default().borders(Borders::ALL).title("Name").border_style(border(a))),
+        Paragraph::new(if a {
+            format!("{name}█")
+        } else {
+            name.to_string()
+        })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Name")
+                .border_style(border(a)),
+        ),
         chunks[0],
     );
 
     // Redirect URI
     let a = field == 1;
     frame.render_widget(
-        Paragraph::new(if a { format!("{redirect_uri}█") } else { redirect_uri.to_string() })
-            .block(Block::default().borders(Borders::ALL).title("Redirect URI").border_style(border(a))),
+        Paragraph::new(if a {
+            format!("{redirect_uri}█")
+        } else {
+            redirect_uri.to_string()
+        })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Redirect URI")
+                .border_style(border(a)),
+        ),
         chunks[1],
     );
 
     // Scopes
     let a = field == 2;
     frame.render_widget(
-        Paragraph::new(if a { format!("{scopes}█") } else { scopes.to_string() })
-            .block(Block::default().borders(Borders::ALL).title("Scopes").border_style(border(a))),
+        Paragraph::new(if a {
+            format!("{scopes}█")
+        } else {
+            scopes.to_string()
+        })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Scopes")
+                .border_style(border(a)),
+        ),
         chunks[2],
     );
 
@@ -457,11 +628,15 @@ pub fn render_create_client(
     let labels = ["Confidential", "SPA/Mobile", "Machine (M2M)"];
     let mut spans: Vec<Span> = Vec::new();
     for (i, label) in labels.iter().enumerate() {
-        if i > 0 { spans.push(Span::raw("   ")); }
+        if i > 0 {
+            spans.push(Span::raw("   "));
+        }
         if i as u8 == client_type {
             spans.push(Span::styled(
                 format!("● {label}"),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ));
         } else {
             spans.push(Span::styled(
@@ -471,8 +646,12 @@ pub fn render_create_client(
         }
     }
     frame.render_widget(
-        Paragraph::new(Line::from(spans))
-            .block(Block::default().borders(Borders::ALL).title(title).border_style(border(type_active))),
+        Paragraph::new(Line::from(spans)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(border(type_active)),
+        ),
         chunks[3],
     );
 
@@ -487,7 +666,10 @@ pub fn render_create_client(
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::styled(" Cancel", Style::default().fg(Color::DarkGray)),
     ]);
-    frame.render_widget(Paragraph::new(hints).alignment(Alignment::Center), chunks[5]);
+    frame.render_widget(
+        Paragraph::new(hints).alignment(Alignment::Center),
+        chunks[5],
+    );
 }
 
 /// Render a simple form modal with labelled fields.
@@ -543,8 +725,11 @@ pub fn render_form(
         let para = if is_active {
             Paragraph::new(format!("{value}█")).block(input_block)
         } else if value.is_empty() && !placeholder.is_empty() {
-            Paragraph::new(Span::styled(*placeholder, Style::default().fg(Color::DarkGray)))
-                .block(input_block)
+            Paragraph::new(Span::styled(
+                *placeholder,
+                Style::default().fg(Color::DarkGray),
+            ))
+            .block(input_block)
         } else {
             Paragraph::new(value.to_string()).block(input_block)
         };
@@ -579,7 +764,12 @@ pub fn render_edit_client(
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(block, area);
 
-    let inner = Rect { x: area.x + 2, y: area.y + 1, width: area.width - 4, height: area.height - 2 };
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 1,
+        width: area.width - 4,
+        height: area.height - 2,
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -596,63 +786,110 @@ pub fn render_edit_client(
         .split(inner);
 
     let border = |active: bool| {
-        if active { Style::default().fg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) }
+        if active {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
     };
 
     let text_field = |val: &str, placeholder: &str, active: bool| -> Paragraph<'_> {
         if active {
             Paragraph::new(format!("{val}█"))
         } else if val.is_empty() {
-            Paragraph::new(Span::styled(placeholder.to_string(), Style::default().fg(Color::DarkGray)))
+            Paragraph::new(Span::styled(
+                placeholder.to_string(),
+                Style::default().fg(Color::DarkGray),
+            ))
         } else {
             Paragraph::new(val.to_string())
         }
     };
 
     frame.render_widget(
-        text_field(name, "e.g. My App", field == 0)
-            .block(Block::default().borders(Borders::ALL).title("Name").border_style(border(field == 0))),
+        text_field(name, "e.g. My App", field == 0).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Name")
+                .border_style(border(field == 0)),
+        ),
         chunks[0],
     );
     frame.render_widget(
-        text_field(redirect_uris, "https://app.example.com/callback", field == 1)
-            .block(Block::default().borders(Borders::ALL).title("Redirect URIs (comma-separated)").border_style(border(field == 1))),
+        text_field(
+            redirect_uris,
+            "https://app.example.com/callback",
+            field == 1,
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Redirect URIs (comma-separated)")
+                .border_style(border(field == 1)),
+        ),
         chunks[1],
     );
     frame.render_widget(
-        text_field(scopes, "openid email profile", field == 2)
-            .block(Block::default().borders(Borders::ALL).title("Scopes").border_style(border(field == 2))),
+        text_field(scopes, "openid email profile", field == 2).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Scopes")
+                .border_style(border(field == 2)),
+        ),
         chunks[2],
     );
     frame.render_widget(
-        text_field(access_token_ttl, "blank = tenant default", field == 3)
-            .block(Block::default().borders(Borders::ALL).title("Access Token TTL (minutes, blank = default)").border_style(border(field == 3))),
+        text_field(access_token_ttl, "blank = tenant default", field == 3).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Access Token TTL (minutes, blank = default)")
+                .border_style(border(field == 3)),
+        ),
         chunks[3],
     );
     frame.render_widget(
-        text_field(refresh_token_ttl, "blank = tenant default", field == 4)
-            .block(Block::default().borders(Borders::ALL).title("Refresh Token TTL (days, blank = default)").border_style(border(field == 4))),
+        text_field(refresh_token_ttl, "blank = tenant default", field == 4).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Refresh Token TTL (days, blank = default)")
+                .border_style(border(field == 4)),
+        ),
         chunks[4],
     );
 
     let type_active = field == 5;
-    let title = if type_active { "Type  ←/→ or Space" } else { "Type" };
+    let title = if type_active {
+        "Type  ←/→ or Space"
+    } else {
+        "Type"
+    };
     let labels = ["Confidential", "SPA/Mobile", "Machine (M2M)"];
     let mut spans: Vec<Span> = Vec::new();
     for (i, label) in labels.iter().enumerate() {
-        if i > 0 { spans.push(Span::raw("   ")); }
+        if i > 0 {
+            spans.push(Span::raw("   "));
+        }
         if i as u8 == client_type {
             spans.push(Span::styled(
                 format!("● {label}"),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ));
         } else {
-            spans.push(Span::styled(format!("○ {label}"), Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                format!("○ {label}"),
+                Style::default().fg(Color::DarkGray),
+            ));
         }
     }
     frame.render_widget(
-        Paragraph::new(Line::from(spans))
-            .block(Block::default().borders(Borders::ALL).title(title).border_style(border(type_active))),
+        Paragraph::new(Line::from(spans)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(border(type_active)),
+        ),
         chunks[5],
     );
 
@@ -666,5 +903,8 @@ pub fn render_edit_client(
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::styled(" Cancel", Style::default().fg(Color::DarkGray)),
     ]);
-    frame.render_widget(Paragraph::new(hints).alignment(Alignment::Center), chunks[7]);
+    frame.render_widget(
+        Paragraph::new(hints).alignment(Alignment::Center),
+        chunks[7],
+    );
 }

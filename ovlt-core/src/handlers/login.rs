@@ -1,4 +1,9 @@
-use axum::{extract::{ConnectInfo, State}, http::header, response::IntoResponse, Extension, Json};
+use axum::{
+    extract::{ConnectInfo, State},
+    http::header,
+    response::IntoResponse,
+    Extension, Json,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::SocketAddr;
@@ -8,7 +13,10 @@ use crate::{
     db,
     error::AppError,
     middleware::tenant::TenantContext,
-    services::{audit_service, lockout_service, mfa_service, permission_service, role_service, session_service, tenant_settings_service, token_service, user_service},
+    services::{
+        audit_service, lockout_service, mfa_service, permission_service, role_service,
+        session_service, tenant_settings_service, token_service, user_service,
+    },
     state::AppState,
 };
 
@@ -120,14 +128,19 @@ pub async fn login(
     )?;
 
     // MFA check — if enabled, issue a short-lived challenge token instead of full tokens
-    if mfa_service::find_enabled(&txn, ctx.tenant_id, user.id).await?.is_some() {
+    if mfa_service::find_enabled(&txn, ctx.tenant_id, user.id)
+        .await?
+        .is_some()
+    {
         txn.commit().await?;
         lockout_service::clear_attempts(&state.db, ctx.tenant_id, &email_lookup).await?;
-        let mfa_token = token_service::generate_mfa_token(user.id, ctx.tenant_id, &state.config.jwt_secret)?;
+        let mfa_token =
+            token_service::generate_mfa_token(user.id, ctx.tenant_id, &state.config.jwt_secret)?;
         return Ok(Json(json!({
             "mfa_required": true,
             "mfa_token": mfa_token,
-        })).into_response());
+        }))
+        .into_response());
     }
 
     let roles = role_service::list_names_for_user(&txn, user.id, ctx.tenant_id)
@@ -176,7 +189,10 @@ pub async fn login(
         &state.db,
         ctx.tenant_id,
         user.id,
-        session_service::SessionData { email: email_plain, ip: Some(ip) },
+        session_service::SessionData {
+            email: email_plain,
+            ip: Some(ip),
+        },
         settings.refresh_token_ttl_days,
     )
     .await
@@ -197,5 +213,6 @@ pub async fn login(
             refresh_token,
             expires_in: settings.access_token_ttl_minutes * 60,
         }),
-    ).into_response())
+    )
+        .into_response())
 }

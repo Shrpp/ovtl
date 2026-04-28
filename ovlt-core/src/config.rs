@@ -58,20 +58,25 @@ fn gen_secret() -> String {
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let (jwt_secret, master_encryption_key, tenant_wrap_key, generated) = {
-            let jwt   = env::var("JWT_SECRET").ok();
-            let mek   = env::var("MASTER_ENCRYPTION_KEY").ok();
-            let twk   = env::var("TENANT_WRAP_KEY").ok();
+            let jwt = env::var("JWT_SECRET").ok();
+            let mek = env::var("MASTER_ENCRYPTION_KEY").ok();
+            let twk = env::var("TENANT_WRAP_KEY").ok();
 
             let any_missing = jwt.is_none() || mek.is_none() || twk.is_none();
 
-            let jwt_secret           = jwt.unwrap_or_else(gen_secret);
+            let jwt_secret = jwt.unwrap_or_else(gen_secret);
             let master_encryption_key = mek.unwrap_or_else(gen_secret);
-            let mut tenant_wrap_key  = twk.unwrap_or_else(gen_secret);
+            let mut tenant_wrap_key = twk.unwrap_or_else(gen_secret);
             while tenant_wrap_key == master_encryption_key {
                 tenant_wrap_key = gen_secret();
             }
 
-            (jwt_secret, master_encryption_key, tenant_wrap_key, any_missing)
+            (
+                jwt_secret,
+                master_encryption_key,
+                tenant_wrap_key,
+                any_missing,
+            )
         };
 
         if jwt_secret.len() < 32 {
@@ -123,9 +128,7 @@ impl Config {
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>();
 
-        if environment == Environment::Production
-            && cors_allowed_origins == vec!["*".to_string()]
-        {
+        if environment == Environment::Production && cors_allowed_origins == vec!["*".to_string()] {
             return Err(
                 "CORS_ALLOWED_ORIGINS must be set explicitly in production (no wildcard)".into(),
             );
@@ -151,8 +154,7 @@ impl Config {
             bootstrap_tenant_slug: env::var("OVLT_BOOTSTRAP_TENANT_SLUG").ok(),
             bootstrap_admin_email: env::var("OVLT_BOOTSTRAP_ADMIN_EMAIL").ok(),
             bootstrap_admin_password: env::var("OVLT_BOOTSTRAP_ADMIN_PASSWORD").ok(),
-            ovlt_issuer: env::var("OVLT_ISSUER")
-                .unwrap_or_else(|_| "http://localhost:3000".into()),
+            ovlt_issuer: env::var("OVLT_ISSUER").unwrap_or_else(|_| "http://localhost:3000".into()),
             rsa_private_key: env::var("RSA_PRIVATE_KEY").ok(),
         })
     }
@@ -184,7 +186,9 @@ fn require(key: &str) -> Result<String, String> {
 
 fn parse_i64(key: &str, default: i64) -> Result<i64, String> {
     match env::var(key) {
-        Ok(v) => v.parse::<i64>().map_err(|_| format!("{key} must be an integer")),
+        Ok(v) => v
+            .parse::<i64>()
+            .map_err(|_| format!("{key} must be an integer")),
         Err(_) => Ok(default),
     }
 }

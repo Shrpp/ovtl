@@ -182,7 +182,10 @@ pub async fn list_client_role_names_for_user(
         .map(|cr| cr.role_id)
         .collect();
 
-    let intersection: Vec<Uuid> = user_role_ids.intersection(&client_role_ids).copied().collect();
+    let intersection: Vec<Uuid> = user_role_ids
+        .intersection(&client_role_ids)
+        .copied()
+        .collect();
 
     if intersection.is_empty() {
         return Ok(vec![]);

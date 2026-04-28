@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, IntoActiveModel, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, IntoActiveModel, QueryFilter,
+    Set,
 };
 use uuid::Uuid;
 
@@ -81,7 +82,9 @@ pub async fn update(
 }
 
 pub async fn delete(txn: &DatabaseTransaction, id: Uuid) -> Result<(), AppError> {
-    identity_providers::Entity::delete_by_id(id).exec(txn).await?;
+    identity_providers::Entity::delete_by_id(id)
+        .exec(txn)
+        .await?;
     Ok(())
 }
 

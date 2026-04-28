@@ -69,7 +69,11 @@ pub async fn callback(
     )
     .await?;
 
-    let email = hefesto::decrypt(&user.email, &tenant_key, &state.config.master_encryption_key)?;
+    let email = hefesto::decrypt(
+        &user.email,
+        &tenant_key,
+        &state.config.master_encryption_key,
+    )?;
     let access_token = token_service::generate_access_token(
         user.id,
         tenant_id,
@@ -131,10 +135,9 @@ async fn resolve_idp_creds(
     }
 
     // Fallback: global env var config
-    let cfg = state
-        .config
-        .oauth_for(provider)
-        .ok_or_else(|| AppError::InvalidInput(format!("{provider} not configured for this tenant")))?;
+    let cfg = state.config.oauth_for(provider).ok_or_else(|| {
+        AppError::InvalidInput(format!("{provider} not configured for this tenant"))
+    })?;
 
     Ok(oauth_service::IdpCredentials {
         client_id: cfg.client_id.clone(),

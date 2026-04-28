@@ -29,11 +29,21 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, table: &mut StatefulTabl
                 c.client_id[..8].to_string() + "…",
                 c.scopes.join(" "),
                 ttl,
-                if c.is_active { "✓".into() } else { "✗".into() },
+                if c.is_active {
+                    "✓".into()
+                } else {
+                    "✗".into()
+                },
             ]
         })
         .collect();
 
     table.select(app.client_selected);
-    table.render(frame, area, &title, &["Name", "Type", "Client ID", "Scopes", "TTL", "Active"], rows);
+    table.render(
+        frame,
+        area,
+        &title,
+        &["Name", "Type", "Client ID", "Scopes", "TTL", "Active"],
+        rows,
+    );
 }

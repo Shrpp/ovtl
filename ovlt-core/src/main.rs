@@ -19,8 +19,8 @@ use ovlt_core::{
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::json;
 use std::net::SocketAddr;
-use tower_http::cors::{AllowOrigin, CorsLayer};
 use sysinfo::{Pid, System};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 

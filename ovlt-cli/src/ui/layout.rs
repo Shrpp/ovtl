@@ -13,7 +13,11 @@ pub fn split_areas(frame: &Frame) -> (Rect, Rect, Rect, Rect) {
     let size = frame.area();
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(size);
 
     let body = Layout::default()
@@ -45,7 +49,9 @@ pub fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     let text = Line::from(vec![
         Span::styled(
             " OVLT Admin ",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("│ "),
         Span::styled(&app.client.base_url, Style::default().fg(Color::White)),
@@ -80,9 +86,13 @@ pub fn render_tenant_sidebar(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let highlight_style = if focused {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
     };
 
     let block = Block::default()
@@ -116,14 +126,25 @@ pub fn render_tabs(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(Color::DarkGray)
     };
     let highlight_style = if focused {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::White)
     };
-    let titles: Vec<Line> = ["Clients", "Users", "Roles", "Permissions", "Sessions", "Settings", "IdP", "Audit"]
-        .iter()
-        .map(|t| Line::from(*t))
-        .collect();
+    let titles: Vec<Line> = [
+        "Clients",
+        "Users",
+        "Roles",
+        "Permissions",
+        "Sessions",
+        "Settings",
+        "IdP",
+        "Audit",
+    ]
+    .iter()
+    .map(|t| Line::from(*t))
+    .collect();
     let tabs = Tabs::new(titles)
         .select(selected)
         .style(base_style)

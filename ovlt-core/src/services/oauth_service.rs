@@ -1,6 +1,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64URL, Engine};
 use hmac::{Hmac, Mac};
-use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenUrl};
+use oauth2::{
+    basic::BasicClient, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenUrl,
+};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
 use sha2::Sha256;
@@ -47,8 +49,8 @@ pub fn verify_state(state: &str, jwt_secret: &str) -> Option<Uuid> {
 }
 
 fn hmac_sign(msg: &str, key: &str) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes())
-        .expect("HMAC accepts any key length");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC accepts any key length");
     mac.update(msg.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }
@@ -69,7 +71,8 @@ pub fn build_authorize_url(
     let client = BasicClient::new(
         ClientId::new(creds.client_id.clone()),
         Some(ClientSecret::new(creds.client_secret.clone())),
-        AuthUrl::new(auth_url_str.to_string()).map_err(|e| AppError::InvalidInput(e.to_string()))?,
+        AuthUrl::new(auth_url_str.to_string())
+            .map_err(|e| AppError::InvalidInput(e.to_string()))?,
         Some(
             TokenUrl::new(token_url_str.to_string())
                 .map_err(|e| AppError::InvalidInput(e.to_string()))?,
@@ -93,7 +96,9 @@ pub fn build_authorize_url(
     Ok((url.to_string(), state_value))
 }
 
-fn provider_urls(provider: &str) -> Result<(&'static str, &'static str, Vec<&'static str>), AppError> {
+fn provider_urls(
+    provider: &str,
+) -> Result<(&'static str, &'static str, Vec<&'static str>), AppError> {
     match provider {
         "google" => Ok((
             "https://accounts.google.com/o/oauth2/v2/auth",
@@ -164,7 +169,9 @@ pub async fn exchange_code(
                 .map_err(|e| AppError::InvalidInput(e.to_string()))?;
             Ok(resp.access_token)
         }
-        _ => Err(AppError::InvalidInput(format!("unknown provider: {provider}"))),
+        _ => Err(AppError::InvalidInput(format!(
+            "unknown provider: {provider}"
+        ))),
     }
 }
 
@@ -286,8 +293,7 @@ pub async fn find_or_create_user(
 
     // 2. Check if a local user exists with this email
     let email_lookup = hefesto::hash_for_lookup(&profile.email, tenant_key)?;
-    let existing_user =
-        user_service::find_by_email_lookup(txn, &email_lookup).await?;
+    let existing_user = user_service::find_by_email_lookup(txn, &email_lookup).await?;
 
     let user = if let Some(u) = existing_user {
         u

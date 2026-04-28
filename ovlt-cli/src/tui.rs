@@ -64,7 +64,10 @@ pub async fn run(mut app: App) -> io::Result<()> {
 
     loop {
         terminal.draw(|frame| {
-            if matches!(&app.mode, AppMode::Login { .. } | AppMode::MfaChallenge { .. }) {
+            if matches!(
+                &app.mode,
+                AppMode::Login { .. } | AppMode::MfaChallenge { .. }
+            ) {
                 ui::login::render(frame, &app);
                 return;
             }
@@ -80,10 +83,16 @@ pub async fn run(mut app: App) -> io::Result<()> {
                 Tab::Clients => ui::clients::render(frame, &app, content_body, &mut client_table),
                 Tab::Users => ui::users::render(frame, &app, content_body, &mut user_table),
                 Tab::Roles => ui::roles::render(frame, &app, content_body, &mut role_list_state),
-                Tab::Permissions => ui::permissions::render(frame, &app, content_body, &mut permission_list_state),
-                Tab::Sessions => ui::sessions::render(frame, &app, content_body, &mut session_list_state),
+                Tab::Permissions => {
+                    ui::permissions::render(frame, &app, content_body, &mut permission_list_state)
+                }
+                Tab::Sessions => {
+                    ui::sessions::render(frame, &app, content_body, &mut session_list_state)
+                }
                 Tab::Settings => ui::settings::render(frame, &app, content_body),
-                Tab::IdentityProviders => ui::identity_providers::render(frame, &app, content_body, &mut idp_table),
+                Tab::IdentityProviders => {
+                    ui::identity_providers::render(frame, &app, content_body, &mut idp_table)
+                }
                 Tab::AuditLog => ui::audit_log::render(frame, &app, content_body, &mut audit_table),
             }
 
@@ -180,15 +189,37 @@ pub async fn run(mut app: App) -> io::Result<()> {
                     modal::render_error(frame, msg);
                 }
                 Modal::CreateTenant { name, slug, field } => {
-                    modal::render_form(frame, "New Tenant", &[
-                        ("Name", name, "e.g. Acme Corp"),
-                        ("Slug", slug, "e.g. acme (URL-safe, unique)"),
-                    ], *field);
+                    modal::render_form(
+                        frame,
+                        "New Tenant",
+                        &[
+                            ("Name", name, "e.g. Acme Corp"),
+                            ("Slug", slug, "e.g. acme (URL-safe, unique)"),
+                        ],
+                        *field,
+                    );
                 }
-                Modal::CreateClient { name, redirect_uri, scopes, client_type, field } => {
-                    modal::render_create_client(frame, name, redirect_uri, scopes, *client_type, *field);
+                Modal::CreateClient {
+                    name,
+                    redirect_uri,
+                    scopes,
+                    client_type,
+                    field,
+                } => {
+                    modal::render_create_client(
+                        frame,
+                        name,
+                        redirect_uri,
+                        scopes,
+                        *client_type,
+                        *field,
+                    );
                 }
-                Modal::CreateUser { email, password, field } => {
+                Modal::CreateUser {
+                    email,
+                    password,
+                    field,
+                } => {
                     modal::render_form(
                         frame,
                         "New User",
@@ -202,42 +233,122 @@ pub async fn run(mut app: App) -> io::Result<()> {
                 Modal::QuickStart(_) => {
                     ui::quickstart::render(frame, &app);
                 }
-                Modal::EditClient { name, redirect_uris, scopes, access_token_ttl, refresh_token_ttl, client_type, field, .. } => {
-                    modal::render_edit_client(frame, name, redirect_uris, scopes, access_token_ttl, refresh_token_ttl, *client_type, *field);
+                Modal::EditClient {
+                    name,
+                    redirect_uris,
+                    scopes,
+                    access_token_ttl,
+                    refresh_token_ttl,
+                    client_type,
+                    field,
+                    ..
+                } => {
+                    modal::render_edit_client(
+                        frame,
+                        name,
+                        redirect_uris,
+                        scopes,
+                        access_token_ttl,
+                        refresh_token_ttl,
+                        *client_type,
+                        *field,
+                    );
                 }
-                Modal::CreateIdp { provider, client_id, client_secret, redirect_url, scopes, field } => {
+                Modal::CreateIdp {
+                    provider,
+                    client_id,
+                    client_secret,
+                    redirect_url,
+                    scopes,
+                    field,
+                } => {
                     modal::render_form(
                         frame,
                         "New Identity Provider",
                         &[
                             ("Provider", provider, "google  or  github"),
-                            ("Client ID", client_id, "OAuth app Client ID from provider console"),
-                            ("Client Secret", client_secret, "OAuth app Client Secret from provider console"),
-                            ("Redirect URL", redirect_url, "https://your-domain/auth/callback/google"),
+                            (
+                                "Client ID",
+                                client_id,
+                                "OAuth app Client ID from provider console",
+                            ),
+                            (
+                                "Client Secret",
+                                client_secret,
+                                "OAuth app Client Secret from provider console",
+                            ),
+                            (
+                                "Redirect URL",
+                                redirect_url,
+                                "https://your-domain/auth/callback/google",
+                            ),
                             ("Scopes", scopes, "email profile  (space-separated)"),
                         ],
                         *field,
                     );
                 }
-                Modal::EditIdp { provider, client_id, client_secret, redirect_url, scopes, enabled, field, .. } => {
+                Modal::EditIdp {
+                    provider,
+                    client_id,
+                    client_secret,
+                    redirect_url,
+                    scopes,
+                    enabled,
+                    field,
+                    ..
+                } => {
                     let enabled_str = if *enabled { "true" } else { "false" };
                     modal::render_form(
                         frame,
                         &format!("Edit Identity Provider — {provider}"),
                         &[
-                            ("Client ID", client_id, "OAuth app Client ID from provider console"),
-                            ("Client Secret", client_secret, "blank = keep existing secret"),
-                            ("Redirect URL", redirect_url, "https://your-domain/auth/callback/google"),
+                            (
+                                "Client ID",
+                                client_id,
+                                "OAuth app Client ID from provider console",
+                            ),
+                            (
+                                "Client Secret",
+                                client_secret,
+                                "blank = keep existing secret",
+                            ),
+                            (
+                                "Redirect URL",
+                                redirect_url,
+                                "https://your-domain/auth/callback/google",
+                            ),
                             ("Scopes", scopes, "email profile  (space-separated)"),
                             ("Enabled", enabled_str, "Space to toggle"),
                         ],
                         *field,
                     );
                 }
-                Modal::EditUser { email, password, is_active, all_roles, permissions, field, role_selected, .. } => {
-                    modal::render_edit_user(frame, email, password, *is_active, all_roles, permissions, *field, *role_selected);
+                Modal::EditUser {
+                    email,
+                    password,
+                    is_active,
+                    all_roles,
+                    permissions,
+                    field,
+                    role_selected,
+                    ..
+                } => {
+                    modal::render_edit_user(
+                        frame,
+                        email,
+                        password,
+                        *is_active,
+                        all_roles,
+                        permissions,
+                        *field,
+                        *role_selected,
+                    );
                 }
-                Modal::CreateRole { name, description, field } => {
+                Modal::CreateRole {
+                    name,
+                    description,
+                    field,
+                } => {
                     modal::render_form(
                         frame,
                         "New Role",
@@ -248,10 +359,28 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         *field,
                     );
                 }
-                Modal::EditRole { name, description, all_permissions, field, perm_selected, .. } => {
-                    modal::render_edit_role(frame, name, description, all_permissions, *field, *perm_selected);
+                Modal::EditRole {
+                    name,
+                    description,
+                    all_permissions,
+                    field,
+                    perm_selected,
+                    ..
+                } => {
+                    modal::render_edit_role(
+                        frame,
+                        name,
+                        description,
+                        all_permissions,
+                        *field,
+                        *perm_selected,
+                    );
                 }
-                Modal::CreatePermission { name, description, field } => {
+                Modal::CreatePermission {
+                    name,
+                    description,
+                    field,
+                } => {
                     modal::render_form(
                         frame,
                         "New Permission",
@@ -262,7 +391,12 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         *field,
                     );
                 }
-                Modal::EditPermission { name, description, field, .. } => {
+                Modal::EditPermission {
+                    name,
+                    description,
+                    field,
+                    ..
+                } => {
                     modal::render_form(
                         frame,
                         "Edit Permission",
@@ -273,7 +407,12 @@ pub async fn run(mut app: App) -> io::Result<()> {
                         *field,
                     );
                 }
-                Modal::ClientRoles { client_name, all_roles, selected, .. } => {
+                Modal::ClientRoles {
+                    client_name,
+                    all_roles,
+                    selected,
+                    ..
+                } => {
                     modal::render_user_roles(frame, client_name, all_roles, *selected);
                 }
             }
@@ -324,8 +463,20 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
     let opts = app.tenant_options.clone();
     let has_opts = !opts.is_empty();
 
-    let mk_mode = |email: String, password: String, slug: String, slug_idx: usize, field: usize, error: Option<String>| {
-        AppMode::Login { email, password, slug, slug_idx, field, error }
+    let mk_mode = |email: String,
+                   password: String,
+                   slug: String,
+                   slug_idx: usize,
+                   field: usize,
+                   error: Option<String>| {
+        AppMode::Login {
+            email,
+            password,
+            slug,
+            slug_idx,
+            field,
+            error,
+        }
     };
 
     match code {
@@ -337,7 +488,11 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
         }
         // Tenant picker: Up/Down cycle through options
         KeyCode::Up if field == 2 && has_opts => {
-            let idx = if slug_idx == 0 { opts.len() - 1 } else { slug_idx - 1 };
+            let idx = if slug_idx == 0 {
+                opts.len() - 1
+            } else {
+                slug_idx - 1
+            };
             app.mode = mk_mode(email, password, opts[idx].0.clone(), idx, field, None);
         }
         KeyCode::Down if field == 2 && has_opts => {
@@ -348,9 +503,15 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
         KeyCode::Backspace => {
             let (mut e, mut p, mut s) = (email, password, slug);
             match field {
-                0 => { e.pop(); }
-                1 => { p.pop(); }
-                _ if !has_opts => { s.pop(); }
+                0 => {
+                    e.pop();
+                }
+                1 => {
+                    p.pop();
+                }
+                _ if !has_opts => {
+                    s.pop();
+                }
                 _ => {}
             }
             app.mode = mk_mode(e, p, s, slug_idx, field, None);
@@ -380,8 +541,8 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                     load_tenants(app).await;
                     check_health(app).await;
                     // Auto-open wizard if only the master tenant exists
-                    let only_master = app.tenants.len() <= 1
-                        && app.tenants.iter().all(|t| t.slug == "master");
+                    let only_master =
+                        app.tenants.len() <= 1 && app.tenants.iter().all(|t| t.slug == "master");
                     if only_master && slug == "master" {
                         app.modal = Modal::QuickStart(QuickStartState::default());
                     }
@@ -395,12 +556,24 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
                     };
                 }
                 Err(ApiError::Api { status: 401, .. }) => {
-                    app.mode = mk_mode(email, password, slug, slug_idx, field,
-                        Some("Invalid credentials".to_string()));
+                    app.mode = mk_mode(
+                        email,
+                        password,
+                        slug,
+                        slug_idx,
+                        field,
+                        Some("Invalid credentials".to_string()),
+                    );
                 }
                 Err(e) => {
-                    app.mode = mk_mode(email, password, slug, slug_idx, field,
-                        Some(format!("Error: {e}")));
+                    app.mode = mk_mode(
+                        email,
+                        password,
+                        slug,
+                        slug_idx,
+                        field,
+                        Some(format!("Error: {e}")),
+                    );
                 }
             }
         }
@@ -410,15 +583,22 @@ async fn handle_login_key(app: &mut App, code: KeyCode) {
 
 async fn handle_mfa_key(app: &mut App, key: KeyCode) {
     let (mfa_token, slug, otp_code) = match &app.mode {
-        AppMode::MfaChallenge { mfa_token, slug, code, .. } => {
-            (mfa_token.clone(), slug.clone(), code.clone())
-        }
+        AppMode::MfaChallenge {
+            mfa_token,
+            slug,
+            code,
+            ..
+        } => (mfa_token.clone(), slug.clone(), code.clone()),
         _ => return,
     };
 
     match key {
         KeyCode::Esc => {
-            let default_slug = app.tenant_options.first().map(|(s, _)| s.clone()).unwrap_or_else(|| "master".into());
+            let default_slug = app
+                .tenant_options
+                .first()
+                .map(|(s, _)| s.clone())
+                .unwrap_or_else(|| "master".into());
             app.mode = AppMode::Login {
                 email: String::new(),
                 password: String::new(),
@@ -454,8 +634,8 @@ async fn handle_mfa_key(app: &mut App, key: KeyCode) {
                     app.mode = AppMode::Admin;
                     load_tenants(app).await;
                     check_health(app).await;
-                    let only_master = app.tenants.len() <= 1
-                        && app.tenants.iter().all(|t| t.slug == "master");
+                    let only_master =
+                        app.tenants.len() <= 1 && app.tenants.iter().all(|t| t.slug == "master");
                     if only_master && slug == "master" {
                         app.modal = Modal::QuickStart(QuickStartState::default());
                     }
@@ -491,7 +671,11 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
             app.modal = Modal::None;
             return;
         }
-        Modal::CreateTenant { mut name, mut slug, mut field } => {
+        Modal::CreateTenant {
+            mut name,
+            mut slug,
+            mut field,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
@@ -526,17 +710,35 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
             }
             return;
         }
-        Modal::CreateClient { mut name, mut redirect_uri, mut scopes, mut client_type, mut field } => {
+        Modal::CreateClient {
+            mut name,
+            mut redirect_uri,
+            mut scopes,
+            mut client_type,
+            mut field,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 4;
-                    app.modal = Modal::CreateClient { name, redirect_uri, scopes, client_type, field };
+                    app.modal = Modal::CreateClient {
+                        name,
+                        redirect_uri,
+                        scopes,
+                        client_type,
+                        field,
+                    };
                 }
                 // On the type field (3), Space/Left/Right cycles the client_type.
                 KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right if field == 3 => {
                     client_type = (client_type + 1) % 3;
-                    app.modal = Modal::CreateClient { name, redirect_uri, scopes, client_type, field };
+                    app.modal = Modal::CreateClient {
+                        name,
+                        redirect_uri,
+                        scopes,
+                        client_type,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     // Machine clients (type 2) don't require redirect_uri.
@@ -552,32 +754,58 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                 }
                 KeyCode::Backspace => {
                     match field {
-                        0 => { name.pop(); }
-                        1 => { redirect_uri.pop(); }
-                        2 => { scopes.pop(); }
-                        _ => {}  // field 3 is the type selector, not editable
+                        0 => {
+                            name.pop();
+                        }
+                        1 => {
+                            redirect_uri.pop();
+                        }
+                        2 => {
+                            scopes.pop();
+                        }
+                        _ => {} // field 3 is the type selector, not editable
                     }
-                    app.modal = Modal::CreateClient { name, redirect_uri, scopes, client_type, field };
+                    app.modal = Modal::CreateClient {
+                        name,
+                        redirect_uri,
+                        scopes,
+                        client_type,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
                     match field {
                         0 => name.push(c),
                         1 => redirect_uri.push(c),
                         2 => scopes.push(c),
-                        _ => {}  // field 3 is the type selector, not editable
+                        _ => {} // field 3 is the type selector, not editable
                     }
-                    app.modal = Modal::CreateClient { name, redirect_uri, scopes, client_type, field };
+                    app.modal = Modal::CreateClient {
+                        name,
+                        redirect_uri,
+                        scopes,
+                        client_type,
+                        field,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::CreateUser { mut email, mut password, mut field } => {
+        Modal::CreateUser {
+            mut email,
+            mut password,
+            mut field,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 2;
-                    app.modal = Modal::CreateUser { email, password, field };
+                    app.modal = Modal::CreateUser {
+                        email,
+                        password,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     if !email.is_empty() && !password.is_empty() {
@@ -593,7 +821,11 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     } else {
                         password.pop();
                     }
-                    app.modal = Modal::CreateUser { email, password, field };
+                    app.modal = Modal::CreateUser {
+                        email,
+                        password,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
                     if field == 0 {
@@ -601,18 +833,30 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     } else {
                         password.push(c);
                     }
-                    app.modal = Modal::CreateUser { email, password, field };
+                    app.modal = Modal::CreateUser {
+                        email,
+                        password,
+                        field,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::CreateRole { mut name, mut description, mut field } => {
+        Modal::CreateRole {
+            mut name,
+            mut description,
+            mut field,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 2;
-                    app.modal = Modal::CreateRole { name, description, field };
+                    app.modal = Modal::CreateRole {
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     if !name.is_empty() {
@@ -623,33 +867,73 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     }
                 }
                 KeyCode::Backspace => {
-                    if field == 0 { name.pop(); } else { description.pop(); }
-                    app.modal = Modal::CreateRole { name, description, field };
+                    if field == 0 {
+                        name.pop();
+                    } else {
+                        description.pop();
+                    }
+                    app.modal = Modal::CreateRole {
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
-                    if field == 0 { name.push(c); } else { description.push(c); }
-                    app.modal = Modal::CreateRole { name, description, field };
+                    if field == 0 {
+                        name.push(c);
+                    } else {
+                        description.push(c);
+                    }
+                    app.modal = Modal::CreateRole {
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::ClientRoles { client_id, client_name, mut all_roles, mut selected } => {
+        Modal::ClientRoles {
+            client_id,
+            client_name,
+            mut all_roles,
+            mut selected,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Up => {
-                    if selected > 0 { selected -= 1; }
-                    app.modal = Modal::ClientRoles { client_id, client_name, all_roles, selected };
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                    app.modal = Modal::ClientRoles {
+                        client_id,
+                        client_name,
+                        all_roles,
+                        selected,
+                    };
                 }
                 KeyCode::Down => {
-                    if selected + 1 < all_roles.len() { selected += 1; }
-                    app.modal = Modal::ClientRoles { client_id, client_name, all_roles, selected };
+                    if selected + 1 < all_roles.len() {
+                        selected += 1;
+                    }
+                    app.modal = Modal::ClientRoles {
+                        client_id,
+                        client_name,
+                        all_roles,
+                        selected,
+                    };
                 }
                 KeyCode::Char(' ') => {
                     if let Some(entry) = all_roles.get_mut(selected) {
                         entry.2 = !entry.2;
                     }
-                    app.modal = Modal::ClientRoles { client_id, client_name, all_roles, selected };
+                    app.modal = Modal::ClientRoles {
+                        client_id,
+                        client_name,
+                        all_roles,
+                        selected,
+                    };
                 }
                 KeyCode::Enter => {
                     let cid = client_id.clone();
@@ -661,16 +945,43 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
             }
             return;
         }
-        Modal::EditClient { mut name, mut redirect_uris, mut scopes, mut access_token_ttl, mut refresh_token_ttl, mut client_type, mut field, id } => {
+        Modal::EditClient {
+            mut name,
+            mut redirect_uris,
+            mut scopes,
+            mut access_token_ttl,
+            mut refresh_token_ttl,
+            mut client_type,
+            mut field,
+            id,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 6;
-                    app.modal = Modal::EditClient { id, name, redirect_uris, scopes, access_token_ttl, refresh_token_ttl, client_type, field };
+                    app.modal = Modal::EditClient {
+                        id,
+                        name,
+                        redirect_uris,
+                        scopes,
+                        access_token_ttl,
+                        refresh_token_ttl,
+                        client_type,
+                        field,
+                    };
                 }
                 KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right if field == 5 => {
                     client_type = (client_type + 1) % 3;
-                    app.modal = Modal::EditClient { id, name, redirect_uris, scopes, access_token_ttl, refresh_token_ttl, client_type, field };
+                    app.modal = Modal::EditClient {
+                        id,
+                        name,
+                        redirect_uris,
+                        scopes,
+                        access_token_ttl,
+                        refresh_token_ttl,
+                        client_type,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     if !name.is_empty() {
@@ -687,14 +998,33 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                 }
                 KeyCode::Backspace => {
                     match field {
-                        0 => { name.pop(); }
-                        1 => { redirect_uris.pop(); }
-                        2 => { scopes.pop(); }
-                        3 => { access_token_ttl.pop(); }
-                        4 => { refresh_token_ttl.pop(); }
+                        0 => {
+                            name.pop();
+                        }
+                        1 => {
+                            redirect_uris.pop();
+                        }
+                        2 => {
+                            scopes.pop();
+                        }
+                        3 => {
+                            access_token_ttl.pop();
+                        }
+                        4 => {
+                            refresh_token_ttl.pop();
+                        }
                         _ => {}
                     }
-                    app.modal = Modal::EditClient { id, name, redirect_uris, scopes, access_token_ttl, refresh_token_ttl, client_type, field };
+                    app.modal = Modal::EditClient {
+                        id,
+                        name,
+                        redirect_uris,
+                        scopes,
+                        access_token_ttl,
+                        refresh_token_ttl,
+                        client_type,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
                     match field {
@@ -705,18 +1035,41 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                         4 => refresh_token_ttl.push(c),
                         _ => {}
                     }
-                    app.modal = Modal::EditClient { id, name, redirect_uris, scopes, access_token_ttl, refresh_token_ttl, client_type, field };
+                    app.modal = Modal::EditClient {
+                        id,
+                        name,
+                        redirect_uris,
+                        scopes,
+                        access_token_ttl,
+                        refresh_token_ttl,
+                        client_type,
+                        field,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::CreateIdp { mut provider, mut client_id, mut client_secret, mut redirect_url, mut scopes, mut field } => {
+        Modal::CreateIdp {
+            mut provider,
+            mut client_id,
+            mut client_secret,
+            mut redirect_url,
+            mut scopes,
+            mut field,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 5;
-                    app.modal = Modal::CreateIdp { provider, client_id, client_secret, redirect_url, scopes, field };
+                    app.modal = Modal::CreateIdp {
+                        provider,
+                        client_id,
+                        client_secret,
+                        redirect_url,
+                        scopes,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     if !provider.is_empty() && !client_id.is_empty() && !client_secret.is_empty() {
@@ -731,13 +1084,30 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                 }
                 KeyCode::Backspace => {
                     match field {
-                        0 => { provider.pop(); }
-                        1 => { client_id.pop(); }
-                        2 => { client_secret.pop(); }
-                        3 => { redirect_url.pop(); }
-                        _ => { scopes.pop(); }
+                        0 => {
+                            provider.pop();
+                        }
+                        1 => {
+                            client_id.pop();
+                        }
+                        2 => {
+                            client_secret.pop();
+                        }
+                        3 => {
+                            redirect_url.pop();
+                        }
+                        _ => {
+                            scopes.pop();
+                        }
                     }
-                    app.modal = Modal::CreateIdp { provider, client_id, client_secret, redirect_url, scopes, field };
+                    app.modal = Modal::CreateIdp {
+                        provider,
+                        client_id,
+                        client_secret,
+                        redirect_url,
+                        scopes,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
                     match field {
@@ -747,23 +1117,52 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                         3 => redirect_url.push(c),
                         _ => scopes.push(c),
                     }
-                    app.modal = Modal::CreateIdp { provider, client_id, client_secret, redirect_url, scopes, field };
+                    app.modal = Modal::CreateIdp {
+                        provider,
+                        client_id,
+                        client_secret,
+                        redirect_url,
+                        scopes,
+                        field,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::EditIdp { mut client_id, mut client_secret, mut redirect_url, mut scopes, mut enabled, mut field, id, provider } => {
+        Modal::EditIdp {
+            mut client_id,
+            mut client_secret,
+            mut redirect_url,
+            mut scopes,
+            mut enabled,
+            mut field,
+            id,
+            provider,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 5;
-                    app.modal = Modal::EditIdp { id, provider, client_id, client_secret, redirect_url, scopes, enabled, field };
+                    app.modal = Modal::EditIdp {
+                        id,
+                        provider,
+                        client_id,
+                        client_secret,
+                        redirect_url,
+                        scopes,
+                        enabled,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     let id2 = id.clone();
                     let cid = client_id.clone();
-                    let cs = if client_secret.is_empty() { None } else { Some(client_secret.clone()) };
+                    let cs = if client_secret.is_empty() {
+                        None
+                    } else {
+                        Some(client_secret.clone())
+                    };
                     let ru = redirect_url.clone();
                     let sc = scopes.clone();
                     let en = enabled;
@@ -773,17 +1172,43 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                 // Space on enabled field (4) toggles it
                 KeyCode::Char(' ') if field == 4 => {
                     enabled = !enabled;
-                    app.modal = Modal::EditIdp { id, provider, client_id, client_secret, redirect_url, scopes, enabled, field };
+                    app.modal = Modal::EditIdp {
+                        id,
+                        provider,
+                        client_id,
+                        client_secret,
+                        redirect_url,
+                        scopes,
+                        enabled,
+                        field,
+                    };
                 }
                 KeyCode::Backspace => {
                     match field {
-                        0 => { client_id.pop(); }
-                        1 => { client_secret.pop(); }
-                        2 => { redirect_url.pop(); }
-                        3 => { scopes.pop(); }
+                        0 => {
+                            client_id.pop();
+                        }
+                        1 => {
+                            client_secret.pop();
+                        }
+                        2 => {
+                            redirect_url.pop();
+                        }
+                        3 => {
+                            scopes.pop();
+                        }
                         _ => {}
                     }
-                    app.modal = Modal::EditIdp { id, provider, client_id, client_secret, redirect_url, scopes, enabled, field };
+                    app.modal = Modal::EditIdp {
+                        id,
+                        provider,
+                        client_id,
+                        client_secret,
+                        redirect_url,
+                        scopes,
+                        enabled,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
                     match field {
@@ -793,87 +1218,233 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                         3 => scopes.push(c),
                         _ => {}
                     }
-                    app.modal = Modal::EditIdp { id, provider, client_id, client_secret, redirect_url, scopes, enabled, field };
+                    app.modal = Modal::EditIdp {
+                        id,
+                        provider,
+                        client_id,
+                        client_secret,
+                        redirect_url,
+                        scopes,
+                        enabled,
+                        field,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::EditUser { id, mut email, mut password, mut is_active, mut all_roles, permissions, mut field, mut role_selected } => {
+        Modal::EditUser {
+            id,
+            mut email,
+            mut password,
+            mut is_active,
+            mut all_roles,
+            permissions,
+            mut field,
+            mut role_selected,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     // Cycle: email(0) → password(1) → is_active(2) → roles(3) → email
                     field = (field + 1) % 4;
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Up if field == 3 => {
-                    if role_selected > 0 { role_selected -= 1; }
+                    if role_selected > 0 {
+                        role_selected -= 1;
+                    }
                     // Recalculate permissions from currently checked roles
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Down if field == 3 => {
-                    if role_selected + 1 < all_roles.len() { role_selected += 1; }
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    if role_selected + 1 < all_roles.len() {
+                        role_selected += 1;
+                    }
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Char(' ') if field == 2 => {
                     is_active = !is_active;
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Char(' ') if field == 3 => {
                     if let Some(entry) = all_roles.get_mut(role_selected) {
                         entry.2 = !entry.2;
                     }
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Enter => {
                     let id2 = id.clone();
                     let e = email.clone();
-                    let pw = if password.is_empty() { None } else { Some(password.clone()) };
+                    let pw = if password.is_empty() {
+                        None
+                    } else {
+                        Some(password.clone())
+                    };
                     let roles = all_roles.clone();
                     app.modal = Modal::None;
                     perform_edit_user(app, id2, e, pw, is_active, roles).await;
                 }
                 KeyCode::Backspace if field == 0 => {
                     email.pop();
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Backspace if field == 1 => {
                     password.pop();
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Char(c) if field == 0 => {
                     email.push(c);
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 KeyCode::Char(c) if field == 1 => {
                     password.push(c);
-                    app.modal = Modal::EditUser { id, email, password, is_active, all_roles, permissions, field, role_selected };
+                    app.modal = Modal::EditUser {
+                        id,
+                        email,
+                        password,
+                        is_active,
+                        all_roles,
+                        permissions,
+                        field,
+                        role_selected,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::EditRole { id, mut name, mut description, mut all_permissions, mut field, mut perm_selected } => {
+        Modal::EditRole {
+            id,
+            mut name,
+            mut description,
+            mut all_permissions,
+            mut field,
+            mut perm_selected,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 3;
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 KeyCode::Up if field == 2 => {
-                    if perm_selected > 0 { perm_selected -= 1; }
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    if perm_selected > 0 {
+                        perm_selected -= 1;
+                    }
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 KeyCode::Down if field == 2 => {
-                    if perm_selected + 1 < all_permissions.len() { perm_selected += 1; }
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    if perm_selected + 1 < all_permissions.len() {
+                        perm_selected += 1;
+                    }
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 KeyCode::Char(' ') if field == 2 => {
                     if let Some(entry) = all_permissions.get_mut(perm_selected) {
                         entry.2 = !entry.2;
                     }
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 KeyCode::Enter if field != 2 => {
                     if !name.is_empty() {
@@ -895,30 +1466,66 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                 }
                 KeyCode::Backspace if field == 0 => {
                     name.pop();
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 KeyCode::Backspace if field == 1 => {
                     description.pop();
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 KeyCode::Char(c) if field == 0 => {
                     name.push(c);
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 KeyCode::Char(c) if field == 1 => {
                     description.push(c);
-                    app.modal = Modal::EditRole { id, name, description, all_permissions, field, perm_selected };
+                    app.modal = Modal::EditRole {
+                        id,
+                        name,
+                        description,
+                        all_permissions,
+                        field,
+                        perm_selected,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::CreatePermission { mut name, mut description, mut field } => {
+        Modal::CreatePermission {
+            mut name,
+            mut description,
+            mut field,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 2;
-                    app.modal = Modal::CreatePermission { name, description, field };
+                    app.modal = Modal::CreatePermission {
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     if !name.is_empty() {
@@ -929,23 +1536,49 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     }
                 }
                 KeyCode::Backspace => {
-                    if field == 0 { name.pop(); } else { description.pop(); }
-                    app.modal = Modal::CreatePermission { name, description, field };
+                    if field == 0 {
+                        name.pop();
+                    } else {
+                        description.pop();
+                    }
+                    app.modal = Modal::CreatePermission {
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
-                    if field == 0 { name.push(c); } else { description.push(c); }
-                    app.modal = Modal::CreatePermission { name, description, field };
+                    if field == 0 {
+                        name.push(c);
+                    } else {
+                        description.push(c);
+                    }
+                    app.modal = Modal::CreatePermission {
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 _ => {}
             }
             return;
         }
-        Modal::EditPermission { id, mut name, mut description, mut field } => {
+        Modal::EditPermission {
+            id,
+            mut name,
+            mut description,
+            mut field,
+        } => {
             match code {
                 KeyCode::Esc => app.modal = Modal::None,
                 KeyCode::Tab => {
                     field = (field + 1) % 2;
-                    app.modal = Modal::EditPermission { id, name, description, field };
+                    app.modal = Modal::EditPermission {
+                        id,
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 KeyCode::Enter => {
                     if !name.is_empty() {
@@ -957,12 +1590,30 @@ async fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) {
                     }
                 }
                 KeyCode::Backspace => {
-                    if field == 0 { name.pop(); } else { description.pop(); }
-                    app.modal = Modal::EditPermission { id, name, description, field };
+                    if field == 0 {
+                        name.pop();
+                    } else {
+                        description.pop();
+                    }
+                    app.modal = Modal::EditPermission {
+                        id,
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 KeyCode::Char(c) => {
-                    if field == 0 { name.push(c); } else { description.push(c); }
-                    app.modal = Modal::EditPermission { id, name, description, field };
+                    if field == 0 {
+                        name.push(c);
+                    } else {
+                        description.push(c);
+                    }
+                    app.modal = Modal::EditPermission {
+                        id,
+                        name,
+                        description,
+                        field,
+                    };
                 }
                 _ => {}
             }
@@ -1084,7 +1735,9 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
             app.settings.field = 0;
         }
         KeyCode::Right if app.settings.entered => {
-            if app.settings.section < 3 { app.settings.section += 1; }
+            if app.settings.section < 3 {
+                app.settings.section += 1;
+            }
             app.settings.field = 0;
         }
         KeyCode::Tab if app.settings.entered => {
@@ -1106,24 +1759,80 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
             handle_settings_char(app, c);
         }
         KeyCode::Up => match app.tab {
-            Tab::Clients => { if app.client_selected > 0 { app.client_selected -= 1; } }
-            Tab::Users => { if app.user_selected > 0 { app.user_selected -= 1; } }
-            Tab::Roles => { if app.role_selected > 0 { app.role_selected -= 1; } }
-            Tab::Permissions => { if app.permission_selected > 0 { app.permission_selected -= 1; } }
-            Tab::Sessions => { if app.session_selected > 0 { app.session_selected -= 1; } }
+            Tab::Clients => {
+                if app.client_selected > 0 {
+                    app.client_selected -= 1;
+                }
+            }
+            Tab::Users => {
+                if app.user_selected > 0 {
+                    app.user_selected -= 1;
+                }
+            }
+            Tab::Roles => {
+                if app.role_selected > 0 {
+                    app.role_selected -= 1;
+                }
+            }
+            Tab::Permissions => {
+                if app.permission_selected > 0 {
+                    app.permission_selected -= 1;
+                }
+            }
+            Tab::Sessions => {
+                if app.session_selected > 0 {
+                    app.session_selected -= 1;
+                }
+            }
             Tab::Settings => {}
-            Tab::IdentityProviders => { if app.idp_selected > 0 { app.idp_selected -= 1; } }
-            Tab::AuditLog => { if app.audit_log_selected > 0 { app.audit_log_selected -= 1; } }
+            Tab::IdentityProviders => {
+                if app.idp_selected > 0 {
+                    app.idp_selected -= 1;
+                }
+            }
+            Tab::AuditLog => {
+                if app.audit_log_selected > 0 {
+                    app.audit_log_selected -= 1;
+                }
+            }
         },
         KeyCode::Down => match app.tab {
-            Tab::Clients => { if app.client_selected + 1 < app.clients.len() { app.client_selected += 1; } }
-            Tab::Users => { if app.user_selected + 1 < app.users.len() { app.user_selected += 1; } }
-            Tab::Roles => { if app.role_selected + 1 < app.roles.len() { app.role_selected += 1; } }
-            Tab::Permissions => { if app.permission_selected + 1 < app.permissions.len() { app.permission_selected += 1; } }
-            Tab::Sessions => { if app.session_selected + 1 < app.sessions.len() { app.session_selected += 1; } }
+            Tab::Clients => {
+                if app.client_selected + 1 < app.clients.len() {
+                    app.client_selected += 1;
+                }
+            }
+            Tab::Users => {
+                if app.user_selected + 1 < app.users.len() {
+                    app.user_selected += 1;
+                }
+            }
+            Tab::Roles => {
+                if app.role_selected + 1 < app.roles.len() {
+                    app.role_selected += 1;
+                }
+            }
+            Tab::Permissions => {
+                if app.permission_selected + 1 < app.permissions.len() {
+                    app.permission_selected += 1;
+                }
+            }
+            Tab::Sessions => {
+                if app.session_selected + 1 < app.sessions.len() {
+                    app.session_selected += 1;
+                }
+            }
             Tab::Settings => {}
-            Tab::IdentityProviders => { if app.idp_selected + 1 < app.identity_providers.len() { app.idp_selected += 1; } }
-            Tab::AuditLog => { if app.audit_log_selected + 1 < app.audit_log.len() { app.audit_log_selected += 1; } }
+            Tab::IdentityProviders => {
+                if app.idp_selected + 1 < app.identity_providers.len() {
+                    app.idp_selected += 1;
+                }
+            }
+            Tab::AuditLog => {
+                if app.audit_log_selected + 1 < app.audit_log.len() {
+                    app.audit_log_selected += 1;
+                }
+            }
         },
         KeyCode::Char('n') => match app.tab {
             Tab::Clients => {
@@ -1195,20 +1904,30 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
                         name: c.name.clone(),
                         redirect_uris: c.redirect_uris.join(", "),
                         scopes: c.scopes.join(" "),
-                        access_token_ttl: c.access_token_ttl_minutes.map(|v| v.to_string()).unwrap_or_default(),
-                        refresh_token_ttl: c.refresh_token_ttl_days.map(|v| v.to_string()).unwrap_or_default(),
+                        access_token_ttl: c
+                            .access_token_ttl_minutes
+                            .map(|v| v.to_string())
+                            .unwrap_or_default(),
+                        refresh_token_ttl: c
+                            .refresh_token_ttl_days
+                            .map(|v| v.to_string())
+                            .unwrap_or_default(),
                         client_type,
                         field: 0,
                     };
                 }
             }
             Tab::Users => {
-                if let (Some(u), Some(tid)) = (app.selected_user().cloned(), app.active_tenant_id.clone()) {
+                if let (Some(u), Some(tid)) =
+                    (app.selected_user().cloned(), app.active_tenant_id.clone())
+                {
                     open_edit_user(app, u.id, u.email, u.is_active, tid).await;
                 }
             }
             Tab::Roles => {
-                if let (Some(r), Some(tid)) = (app.selected_role().cloned(), app.active_tenant_id.clone()) {
+                if let (Some(r), Some(tid)) =
+                    (app.selected_role().cloned(), app.active_tenant_id.clone())
+                {
                     open_edit_role(app, r.id, r.name, r.description, tid).await;
                 }
             }
@@ -1242,7 +1961,9 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
         },
         KeyCode::Char('r') => {
             if app.tab == Tab::Clients {
-                if let (Some(c), Some(tid)) = (app.selected_client().cloned(), app.active_tenant_id.clone()) {
+                if let (Some(c), Some(tid)) =
+                    (app.selected_client().cloned(), app.active_tenant_id.clone())
+                {
                     let is_m2m = c.grant_types.iter().any(|g| g == "client_credentials")
                         && !c.grant_types.iter().any(|g| g == "authorization_code");
                     if is_m2m {
@@ -1255,7 +1976,9 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
         }
         KeyCode::Char('m') => {
             if app.tab == Tab::Users {
-                if let (Some(u), Some(tid)) = (app.selected_user().cloned(), app.active_tenant_id.clone()) {
+                if let (Some(u), Some(tid)) =
+                    (app.selected_user().cloned(), app.active_tenant_id.clone())
+                {
                     if u.mfa_enabled {
                         match app.client.admin_disable_user_mfa(&tid, &u.id).await {
                             Ok(_) => {
@@ -1273,34 +1996,52 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
         KeyCode::Char('d') => match app.tab {
             Tab::Clients => {
                 if let Some(c) = app.selected_client() {
-                    app.modal = Modal::ConfirmDelete { id: c.id.clone(), label: c.name.clone() };
+                    app.modal = Modal::ConfirmDelete {
+                        id: c.id.clone(),
+                        label: c.name.clone(),
+                    };
                 }
             }
             Tab::Users => {
                 if let Some(u) = app.selected_user() {
-                    app.modal = Modal::ConfirmDelete { id: u.id.clone(), label: u.email.clone() };
+                    app.modal = Modal::ConfirmDelete {
+                        id: u.id.clone(),
+                        label: u.email.clone(),
+                    };
                 }
             }
             Tab::Roles => {
                 if let Some(r) = app.selected_role() {
-                    app.modal = Modal::ConfirmDelete { id: r.id.clone(), label: r.name.clone() };
+                    app.modal = Modal::ConfirmDelete {
+                        id: r.id.clone(),
+                        label: r.name.clone(),
+                    };
                 }
             }
             Tab::Permissions => {
                 if let Some(p) = app.selected_permission() {
-                    app.modal = Modal::ConfirmDelete { id: p.id.clone(), label: p.name.clone() };
+                    app.modal = Modal::ConfirmDelete {
+                        id: p.id.clone(),
+                        label: p.name.clone(),
+                    };
                 }
             }
             Tab::Sessions => {
                 if let Some(s) = app.selected_session() {
-                    app.modal = Modal::ConfirmDelete { id: s.id.clone(), label: s.email.clone() };
+                    app.modal = Modal::ConfirmDelete {
+                        id: s.id.clone(),
+                        label: s.email.clone(),
+                    };
                 }
             }
             Tab::Settings => {}
             Tab::AuditLog => {}
             Tab::IdentityProviders => {
                 if let Some(idp) = app.selected_idp() {
-                    app.modal = Modal::ConfirmDelete { id: idp.id.clone(), label: idp.provider.clone() };
+                    app.modal = Modal::ConfirmDelete {
+                        id: idp.id.clone(),
+                        label: idp.provider.clone(),
+                    };
                 }
             }
         },
@@ -1309,7 +2050,9 @@ async fn handle_content_key(app: &mut App, code: KeyCode) {
 }
 
 async fn load_all(app: &mut App) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     let client = app.client.clone();
 
     let (clients_r, users_r, roles_r, perms_r, sessions_r, idps_r, audit_r) = tokio::join!(
@@ -1323,37 +2066,75 @@ async fn load_all(app: &mut App) {
     );
 
     match clients_r {
-        Ok(list) => { app.client_selected = app.client_selected.min(list.len().saturating_sub(1)); app.clients = list; }
-        Err(e) => { on_load_err(app, e, "Clients"); return; }
+        Ok(list) => {
+            app.client_selected = app.client_selected.min(list.len().saturating_sub(1));
+            app.clients = list;
+        }
+        Err(e) => {
+            on_load_err(app, e, "Clients");
+            return;
+        }
     }
     match users_r {
-        Ok(list) => { app.user_selected = app.user_selected.min(list.len().saturating_sub(1)); app.users = list; }
-        Err(e) => { on_load_err(app, e, "Users"); return; }
+        Ok(list) => {
+            app.user_selected = app.user_selected.min(list.len().saturating_sub(1));
+            app.users = list;
+        }
+        Err(e) => {
+            on_load_err(app, e, "Users");
+            return;
+        }
     }
     match roles_r {
-        Ok(list) => { app.role_selected = app.role_selected.min(list.len().saturating_sub(1)); app.roles = list; }
-        Err(e) => { on_load_err(app, e, "Roles"); return; }
+        Ok(list) => {
+            app.role_selected = app.role_selected.min(list.len().saturating_sub(1));
+            app.roles = list;
+        }
+        Err(e) => {
+            on_load_err(app, e, "Roles");
+            return;
+        }
     }
     match perms_r {
-        Ok(list) => { app.permission_selected = app.permission_selected.min(list.len().saturating_sub(1)); app.permissions = list; }
-        Err(e) => { on_load_err(app, e, "Permissions"); return; }
+        Ok(list) => {
+            app.permission_selected = app.permission_selected.min(list.len().saturating_sub(1));
+            app.permissions = list;
+        }
+        Err(e) => {
+            on_load_err(app, e, "Permissions");
+            return;
+        }
     }
     match sessions_r {
-        Ok(list) => { app.session_selected = app.session_selected.min(list.len().saturating_sub(1)); app.sessions = list; }
-        Err(e) => { on_load_err(app, e, "Sessions"); return; }
+        Ok(list) => {
+            app.session_selected = app.session_selected.min(list.len().saturating_sub(1));
+            app.sessions = list;
+        }
+        Err(e) => {
+            on_load_err(app, e, "Sessions");
+            return;
+        }
     }
     match idps_r {
-        Ok(list) => { app.idp_selected = app.idp_selected.min(list.len().saturating_sub(1)); app.identity_providers = list; }
+        Ok(list) => {
+            app.idp_selected = app.idp_selected.min(list.len().saturating_sub(1));
+            app.identity_providers = list;
+        }
         Err(e) => on_load_err(app, e, "IdP"),
     }
     match audit_r {
-        Ok(list) => { app.audit_log_selected = app.audit_log_selected.min(list.len().saturating_sub(1)); app.audit_log = list; }
+        Ok(list) => {
+            app.audit_log_selected = app.audit_log_selected.min(list.len().saturating_sub(1));
+            app.audit_log = list;
+        }
         Err(e) => on_load_err(app, e, "AuditLog"),
     }
 }
 
 async fn load_current_tab(app: &mut App) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     match app.tab {
         Tab::Clients => load_clients(app, tid).await,
         Tab::Users => load_users(app, tid).await,
@@ -1384,7 +2165,10 @@ async fn load_clients(app: &mut App, tenant_id: String) {
     app.client_selected = 0;
     app.clients_loading = true;
     match app.client.list_clients(&tenant_id).await {
-        Ok(list) => { app.clients = list; app.clear_status(); }
+        Ok(list) => {
+            app.clients = list;
+            app.clear_status();
+        }
         Err(e) => on_load_err(app, e, "Clients"),
     }
     app.clients_loading = false;
@@ -1395,7 +2179,10 @@ async fn load_users(app: &mut App, tenant_id: String) {
     app.user_selected = 0;
     app.users_loading = true;
     match app.client.list_users(&tenant_id).await {
-        Ok(list) => { app.users = list; app.clear_status(); }
+        Ok(list) => {
+            app.users = list;
+            app.clear_status();
+        }
         Err(e) => on_load_err(app, e, "Users"),
     }
     app.users_loading = false;
@@ -1406,7 +2193,10 @@ async fn load_roles(app: &mut App, tenant_id: String) {
     app.role_selected = 0;
     app.roles_loading = true;
     match app.client.list_roles(&tenant_id).await {
-        Ok(list) => { app.roles = list; app.clear_status(); }
+        Ok(list) => {
+            app.roles = list;
+            app.clear_status();
+        }
         Err(e) => on_load_err(app, e, "Roles"),
     }
     app.roles_loading = false;
@@ -1417,7 +2207,10 @@ async fn load_sessions(app: &mut App, tenant_id: String) {
     app.session_selected = 0;
     app.sessions_loading = true;
     match app.client.list_sessions(&tenant_id).await {
-        Ok(list) => { app.sessions = list; app.clear_status(); }
+        Ok(list) => {
+            app.sessions = list;
+            app.clear_status();
+        }
         Err(e) => on_load_err(app, e, "Sessions"),
     }
     app.sessions_loading = false;
@@ -1480,7 +2273,16 @@ async fn perform_create_client(
 
     match app
         .client
-        .create_client(&tid, &name, redirect_uris, scopes, is_confidential, grant_types, None, None)
+        .create_client(
+            &tid,
+            &name,
+            redirect_uris,
+            scopes,
+            is_confidential,
+            grant_types,
+            None,
+            None,
+        )
         .await
     {
         Ok(c) => {
@@ -1499,7 +2301,9 @@ async fn perform_create_client(
 }
 
 async fn perform_create_user(app: &mut App, email: String, password: String) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     match app.client.create_user(&tid, &email, &password).await {
         Ok(_) => {
             load_all(app).await;
@@ -1589,7 +2393,10 @@ async fn handle_quickstart_key(app: &mut App, code: KeyCode) {
                         app.modal = Modal::QuickStart(qs);
                         return;
                     }
-                    match client.create_tenant(&qs.tenant_name.clone(), &qs.tenant_slug.clone()).await {
+                    match client
+                        .create_tenant(&qs.tenant_name.clone(), &qs.tenant_slug.clone())
+                        .await
+                    {
                         Ok(t) => {
                             qs.created_tenant_id = Some(t.id);
                             qs.created_tenant_name = Some(qs.tenant_name.clone());
@@ -1614,28 +2421,34 @@ async fn handle_quickstart_key(app: &mut App, code: KeyCode) {
                         app.modal = Modal::QuickStart(qs);
                         return;
                     }
-                    let Some(tid) = qs.created_tenant_id.clone() else { return };
-                    let scopes: Vec<String> = qs.scopes.split_whitespace().map(|s| s.to_owned()).collect();
+                    let Some(tid) = qs.created_tenant_id.clone() else {
+                        return;
+                    };
+                    let scopes: Vec<String> =
+                        qs.scopes.split_whitespace().map(|s| s.to_owned()).collect();
                     let (is_confidential, grant_types) = match qs.client_type {
                         1 => (false, vec!["authorization_code".to_owned()]),
-                        2 => (true,  vec!["client_credentials".to_owned()]),
-                        _ => (true,  vec!["authorization_code".to_owned()]),
+                        2 => (true, vec!["client_credentials".to_owned()]),
+                        _ => (true, vec!["authorization_code".to_owned()]),
                     };
                     let redirect_uris = if qs.client_type == 2 {
                         vec![]
                     } else {
                         vec![qs.redirect_uri.clone()]
                     };
-                    match client.create_client(
-                        &tid,
-                        &qs.client_name.clone(),
-                        redirect_uris,
-                        scopes,
-                        is_confidential,
-                        grant_types,
-                        None,
-                        None,
-                    ).await {
+                    match client
+                        .create_client(
+                            &tid,
+                            &qs.client_name.clone(),
+                            redirect_uris,
+                            scopes,
+                            is_confidential,
+                            grant_types,
+                            None,
+                            None,
+                        )
+                        .await
+                    {
                         Ok(c) => {
                             qs.created_client_id = Some(c.client_id);
                             qs.created_secret = c.client_secret;
@@ -1655,8 +2468,13 @@ async fn handle_quickstart_key(app: &mut App, code: KeyCode) {
                         app.modal = Modal::QuickStart(qs);
                         return;
                     }
-                    let Some(tid) = qs.created_tenant_id.clone() else { return };
-                    match client.create_user(&tid, &qs.user_email.clone(), &qs.user_password.clone()).await {
+                    let Some(tid) = qs.created_tenant_id.clone() else {
+                        return;
+                    };
+                    match client
+                        .create_user(&tid, &qs.user_email.clone(), &qs.user_password.clone())
+                        .await
+                    {
                         Ok(_) => {
                             qs.step = 4;
                             app.modal = Modal::QuickStart(qs);
@@ -1676,13 +2494,27 @@ async fn handle_quickstart_key(app: &mut App, code: KeyCode) {
 
 fn pop_quickstart_field(qs: &mut QuickStartState) {
     match (qs.step, qs.field) {
-        (1, 0) => { qs.tenant_name.pop(); }
-        (1, 1) => { qs.tenant_slug.pop(); }
-        (2, 0) => { qs.client_name.pop(); }
-        (2, 1) => { qs.redirect_uri.pop(); }
-        (2, 2) => { qs.scopes.pop(); }
-        (3, 0) => { qs.user_email.pop(); }
-        (3, 1) => { qs.user_password.pop(); }
+        (1, 0) => {
+            qs.tenant_name.pop();
+        }
+        (1, 1) => {
+            qs.tenant_slug.pop();
+        }
+        (2, 0) => {
+            qs.client_name.pop();
+        }
+        (2, 1) => {
+            qs.redirect_uri.pop();
+        }
+        (2, 2) => {
+            qs.scopes.pop();
+        }
+        (3, 0) => {
+            qs.user_email.pop();
+        }
+        (3, 1) => {
+            qs.user_password.pop();
+        }
         _ => {}
     }
 }
@@ -1701,17 +2533,21 @@ fn push_quickstart_field(qs: &mut QuickStartState, c: char) {
 }
 
 async fn perform_create_role(app: &mut App, name: String, description: String) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     match app.client.create_role(&tid, &name, &description).await {
         Ok(role) => {
-            app.set_status(format!("Role '{}' created — assign permissions below", role.name));
+            app.set_status(format!(
+                "Role '{}' created — assign permissions below",
+                role.name
+            ));
             load_all(app).await;
             open_edit_role(app, role.id, role.name, role.description, tid).await;
         }
         Err(e) => app.modal = Modal::Error(format!("{e}")),
     }
 }
-
 
 async fn open_client_roles(app: &mut App, client_id: String, client_name: String, tid: String) {
     let api = app.client.clone();
@@ -1721,17 +2557,28 @@ async fn open_client_roles(app: &mut App, client_id: String, client_name: String
     );
     let all_roles = match all_roles_r {
         Ok(r) => r,
-        Err(e) => { app.modal = Modal::Error(format!("Failed to load roles: {e}")); return; }
+        Err(e) => {
+            app.modal = Modal::Error(format!("Failed to load roles: {e}"));
+            return;
+        }
     };
     let assigned_ids: std::collections::HashSet<String> = match assigned_r {
         Ok(r) => r.iter().map(|r| r.id.clone()).collect(),
-        Err(e) => { app.modal = Modal::Error(format!("Failed to load client roles: {e}")); return; }
+        Err(e) => {
+            app.modal = Modal::Error(format!("Failed to load client roles: {e}"));
+            return;
+        }
     };
     let entries: Vec<(String, String, bool)> = all_roles
         .iter()
         .map(|r| (r.id.clone(), r.name.clone(), assigned_ids.contains(&r.id)))
         .collect();
-    app.modal = Modal::ClientRoles { client_id, client_name, all_roles: entries, selected: 0 };
+    app.modal = Modal::ClientRoles {
+        client_id,
+        client_name,
+        all_roles: entries,
+        selected: 0,
+    };
 }
 
 async fn perform_save_client_roles(
@@ -1739,7 +2586,9 @@ async fn perform_save_client_roles(
     client_id: String,
     entries: Vec<(String, String, bool)>,
 ) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     let api = app.client.clone();
     for (role_id, _, assigned) in &entries {
         if *assigned {
@@ -1792,7 +2641,9 @@ async fn perform_edit_client(
     refresh_token_ttl_str: String,
     client_type: u8,
 ) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     let redirect_uris: Vec<String> = redirect_uris_str
         .split(',')
         .map(|s| s.trim().to_owned())
@@ -1809,7 +2660,21 @@ async fn perform_edit_client(
         2 => (true, vec!["client_credentials".to_owned()]),
         _ => (true, vec!["authorization_code".to_owned()]),
     };
-    match app.client.update_client(&tid, &id, &name, redirect_uris, scopes, access_ttl, refresh_ttl, is_confidential, grant_types).await {
+    match app
+        .client
+        .update_client(
+            &tid,
+            &id,
+            &name,
+            redirect_uris,
+            scopes,
+            access_ttl,
+            refresh_ttl,
+            is_confidential,
+            grant_types,
+        )
+        .await
+    {
         Ok(_) => {
             app.set_status(format!("Client '{name}' updated"));
             load_all(app).await;
@@ -1823,7 +2688,10 @@ async fn load_idps(app: &mut App, tenant_id: String) {
     app.idp_selected = 0;
     app.idps_loading = true;
     match app.client.list_identity_providers(&tenant_id).await {
-        Ok(list) => { app.identity_providers = list; app.clear_status(); }
+        Ok(list) => {
+            app.identity_providers = list;
+            app.clear_status();
+        }
         Err(e) => on_load_err(app, e, "IdP"),
     }
     app.idps_loading = false;
@@ -1834,7 +2702,10 @@ async fn load_audit_log(app: &mut App, tenant_id: String) {
     app.audit_log_selected = 0;
     app.audit_log_loading = true;
     match app.client.list_audit_log(&tenant_id).await {
-        Ok(list) => { app.audit_log = list; app.clear_status(); }
+        Ok(list) => {
+            app.audit_log = list;
+            app.clear_status();
+        }
         Err(e) => on_load_err(app, e, "AuditLog"),
     }
     app.audit_log_loading = false;
@@ -1848,9 +2719,25 @@ async fn perform_create_idp(
     redirect_url: String,
     scopes_str: String,
 ) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
-    let scopes: Vec<String> = scopes_str.split_whitespace().map(|s| s.to_owned()).collect();
-    match app.client.create_identity_provider(&tid, &provider, &client_id, &client_secret, &redirect_url, scopes).await {
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
+    let scopes: Vec<String> = scopes_str
+        .split_whitespace()
+        .map(|s| s.to_owned())
+        .collect();
+    match app
+        .client
+        .create_identity_provider(
+            &tid,
+            &provider,
+            &client_id,
+            &client_secret,
+            &redirect_url,
+            scopes,
+        )
+        .await
+    {
         Ok(_) => {
             app.set_status(format!("IdP '{provider}' created"));
             load_all(app).await;
@@ -1868,9 +2755,26 @@ async fn perform_edit_idp(
     scopes_str: String,
     enabled: bool,
 ) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
-    let scopes: Vec<String> = scopes_str.split_whitespace().map(|s| s.to_owned()).collect();
-    match app.client.update_identity_provider(&tid, &id, &client_id, client_secret.as_deref(), &redirect_url, scopes, enabled).await {
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
+    let scopes: Vec<String> = scopes_str
+        .split_whitespace()
+        .map(|s| s.to_owned())
+        .collect();
+    match app
+        .client
+        .update_identity_provider(
+            &tid,
+            &id,
+            &client_id,
+            client_secret.as_deref(),
+            &redirect_url,
+            scopes,
+            enabled,
+        )
+        .await
+    {
         Ok(_) => {
             app.set_status("IdP updated");
             load_all(app).await;
@@ -1884,14 +2788,23 @@ async fn load_permissions(app: &mut App, tenant_id: String) {
     app.permission_selected = 0;
     app.permissions_loading = true;
     match app.client.list_permissions(&tenant_id).await {
-        Ok(list) => { app.permissions = list; app.clear_status(); }
+        Ok(list) => {
+            app.permissions = list;
+            app.clear_status();
+        }
         Err(e) => on_load_err(app, e, "Permissions"),
     }
     app.permissions_loading = false;
 }
 
 /// Eager-load everything needed to open EditUser modal.
-async fn open_edit_user(app: &mut App, user_id: String, email: String, is_active: bool, tid: String) {
+async fn open_edit_user(
+    app: &mut App,
+    user_id: String,
+    email: String,
+    is_active: bool,
+    tid: String,
+) {
     let client = app.client.clone();
     // Always fetch fresh from the API so we get current-tenant data regardless of tab cache.
     let (roles_result, assigned_result) = tokio::join!(
@@ -1946,7 +2859,9 @@ async fn derive_user_permissions(
     for (role_id, _, assigned) in role_entries {
         if *assigned {
             if let Ok(perms) = client.list_role_permissions(tid, role_id).await {
-                for p in perms { names.insert(p.name); }
+                for p in perms {
+                    names.insert(p.name);
+                }
             }
         }
     }
@@ -1956,7 +2871,13 @@ async fn derive_user_permissions(
 }
 
 /// Eager-load everything needed to open EditRole modal (fresh from API, not cached state).
-async fn open_edit_role(app: &mut App, role_id: String, name: String, description: String, tid: String) {
+async fn open_edit_role(
+    app: &mut App,
+    role_id: String,
+    name: String,
+    description: String,
+    tid: String,
+) {
     let client = app.client.clone();
     let (all_perms_result, assigned_result) = tokio::join!(
         client.list_permissions(&tid),
@@ -2001,11 +2922,20 @@ async fn perform_edit_user(
     is_active: bool,
     role_entries: Vec<(String, String, bool)>,
 ) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     let pw = password.as_deref();
-    match app.client.update_user_email(&tid, &id, &email, pw, is_active).await {
+    match app
+        .client
+        .update_user_email(&tid, &id, &email, pw, is_active)
+        .await
+    {
         Ok(_) => {}
-        Err(e) => { app.modal = Modal::Error(format!("{e}")); return; }
+        Err(e) => {
+            app.modal = Modal::Error(format!("{e}"));
+            return;
+        }
     }
     // Save role assignments
     let client = app.client.clone();
@@ -2027,10 +2957,15 @@ async fn perform_edit_role(
     description: String,
     perm_entries: Vec<(String, String, bool)>,
 ) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     match app.client.update_role(&tid, &id, &name, &description).await {
         Ok(_) => {}
-        Err(e) => { app.modal = Modal::Error(format!("{e}")); return; }
+        Err(e) => {
+            app.modal = Modal::Error(format!("{e}"));
+            return;
+        }
     }
     let client = app.client.clone();
     for (perm_id, _, assigned) in &perm_entries {
@@ -2045,8 +2980,14 @@ async fn perform_edit_role(
 }
 
 async fn perform_create_permission(app: &mut App, name: String, description: String) {
-    let Some(_tid) = app.active_tenant_id.clone() else { return };
-    match app.client.create_permission(&_tid, &name, &description).await {
+    let Some(_tid) = app.active_tenant_id.clone() else {
+        return;
+    };
+    match app
+        .client
+        .create_permission(&_tid, &name, &description)
+        .await
+    {
         Ok(_) => {
             app.set_status(format!("Permission '{name}' created"));
             load_all(app).await;
@@ -2056,8 +2997,14 @@ async fn perform_create_permission(app: &mut App, name: String, description: Str
 }
 
 async fn perform_edit_permission(app: &mut App, id: String, name: String, description: String) {
-    let Some(_tid) = app.active_tenant_id.clone() else { return };
-    match app.client.update_permission(&_tid, &id, &name, &description).await {
+    let Some(_tid) = app.active_tenant_id.clone() else {
+        return;
+    };
+    match app
+        .client
+        .update_permission(&_tid, &id, &name, &description)
+        .await
+    {
         Ok(_) => {
             app.set_status("Permission updated");
             load_all(app).await;
@@ -2072,19 +3019,37 @@ async fn perform_delete(app: &mut App, id: String) {
         return;
     };
     let result = match app.tab {
-        Tab::Clients => app.client.deactivate_client(&tid, &id).await
+        Tab::Clients => app
+            .client
+            .deactivate_client(&tid, &id)
+            .await
             .map(|_| "Client deactivated"),
-        Tab::Users => app.client.deactivate_user(&tid, &id).await
+        Tab::Users => app
+            .client
+            .deactivate_user(&tid, &id)
+            .await
             .map(|_| "User deactivated"),
-        Tab::Roles => app.client.delete_role(&tid, &id).await
+        Tab::Roles => app
+            .client
+            .delete_role(&tid, &id)
+            .await
             .map(|_| "Role deleted"),
-        Tab::Permissions => app.client.delete_permission(&tid, &id).await
+        Tab::Permissions => app
+            .client
+            .delete_permission(&tid, &id)
+            .await
             .map(|_| "Permission deleted"),
-        Tab::Sessions => app.client.delete_session(&tid, &id).await
+        Tab::Sessions => app
+            .client
+            .delete_session(&tid, &id)
+            .await
             .map(|_| "Session revoked"),
         Tab::Settings => return,
         Tab::AuditLog => return,
-        Tab::IdentityProviders => app.client.delete_identity_provider(&tid, &id).await
+        Tab::IdentityProviders => app
+            .client
+            .delete_identity_provider(&tid, &id)
+            .await
             .map(|_| "Identity provider deleted"),
     };
     match result {
@@ -2183,10 +3148,16 @@ fn handle_settings_backspace(app: &mut App) -> bool {
 }
 
 fn handle_settings_char(app: &mut App, c: char) {
-    if !c.is_ascii_digit() { return; }
+    if !c.is_ascii_digit() {
+        return;
+    }
     let s = &mut app.settings;
     match s.section {
-        0 => { if s.field == 0 { s.policy_min_length.push(c); } }
+        0 => {
+            if s.field == 0 {
+                s.policy_min_length.push(c);
+            }
+        }
         1 => match s.field {
             0 => s.lockout_max_attempts.push(c),
             1 => s.lockout_window_minutes.push(c),
@@ -2203,14 +3174,20 @@ fn handle_settings_char(app: &mut App, c: char) {
 }
 
 async fn save_settings_section(app: &mut App) {
-    let Some(tid) = app.active_tenant_id.clone() else { return };
+    let Some(tid) = app.active_tenant_id.clone() else {
+        return;
+    };
     match app.settings.section {
         0 => {
             let min_len: i32 = app.settings.policy_min_length.parse().unwrap_or(8);
             let uu = app.settings.policy_require_uppercase;
             let dd = app.settings.policy_require_digit;
             let ss = app.settings.policy_require_special;
-            match app.client.put_password_policy(&tid, min_len, uu, dd, ss).await {
+            match app
+                .client
+                .put_password_policy(&tid, min_len, uu, dd, ss)
+                .await
+            {
                 Ok(_) => app.set_status("Password policy saved"),
                 Err(e) => app.modal = Modal::Error(format!("{e}")),
             }
@@ -2235,7 +3212,11 @@ async fn save_settings_section(app: &mut App) {
         3 => {
             let allow = app.settings.allow_public_registration;
             let require = app.settings.require_email_verified;
-            match app.client.put_registration_policy(&tid, allow, require).await {
+            match app
+                .client
+                .put_registration_policy(&tid, allow, require)
+                .await
+            {
                 Ok(_) => app.set_status("Registration policy saved"),
                 Err(e) => app.modal = Modal::Error(format!("{e}")),
             }

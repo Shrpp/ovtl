@@ -281,17 +281,19 @@ async fn token_authorization_code(
         .await
         .unwrap_or_default();
 
-    let client_role_names = role_service::list_client_role_names_for_user(
-        &txn, user.id, client.id, tenant_id,
-    )
-    .await
-    .unwrap_or_default();
+    let client_role_names =
+        role_service::list_client_role_names_for_user(&txn, user.id, client.id, tenant_id)
+            .await
+            .unwrap_or_default();
 
     let resource_access = if !client_role_names.is_empty() {
         let mut map = std::collections::HashMap::new();
         map.insert(
             client.client_id.clone(),
-            token_service::RealmAccess { roles: client_role_names, permissions: vec![] },
+            token_service::RealmAccess {
+                roles: client_role_names,
+                permissions: vec![],
+            },
         );
         map
     } else {
@@ -320,14 +322,7 @@ async fn token_authorization_code(
 
     let refresh_token = token_service::generate_refresh_token();
     let token_hash = token_service::hash_refresh_token(&refresh_token);
-    token_service::store_refresh_token(
-        &txn,
-        tenant_id,
-        user.id,
-        token_hash,
-        refresh_ttl,
-    )
-    .await?;
+    token_service::store_refresh_token(&txn, tenant_id, user.id, token_hash, refresh_ttl).await?;
 
     txn.commit().await?;
 

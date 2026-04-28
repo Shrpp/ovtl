@@ -230,7 +230,11 @@ pub struct MfaClaims {
     pub purpose: String,
 }
 
-pub fn generate_mfa_token(user_id: Uuid, tenant_id: Uuid, secret: &str) -> Result<String, AppError> {
+pub fn generate_mfa_token(
+    user_id: Uuid,
+    tenant_id: Uuid,
+    secret: &str,
+) -> Result<String, AppError> {
     let now = Utc::now().timestamp();
     let claims = MfaClaims {
         sub: user_id.to_string(),

@@ -13,8 +13,8 @@ use crate::{
     handlers::admin_auth,
     middleware::{auth::AuthUser, tenant::TenantContext},
     services::{
-        mfa_service, permission_service, role_service, session_service,
-        tenant_settings_service, token_service, user_service,
+        mfa_service, permission_service, role_service, session_service, tenant_settings_service,
+        token_service, user_service,
     },
     state::AppState,
 };
@@ -222,7 +222,10 @@ pub async fn mfa_challenge(
         &state.db,
         ctx.tenant_id,
         user_id,
-        session_service::SessionData { email: email_plain, ip: None },
+        session_service::SessionData {
+            email: email_plain,
+            ip: None,
+        },
         settings.refresh_token_ttl_days,
     )
     .await
@@ -261,7 +264,12 @@ pub async fn admin_disable_mfa(
     headers: HeaderMap,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    admin_auth::require_admin(&headers, &state.config.admin_key, &state.config.jwt_secret, state.master_tenant_id)?;
+    admin_auth::require_admin(
+        &headers,
+        &state.config.admin_key,
+        &state.config.jwt_secret,
+        state.master_tenant_id,
+    )?;
     let tenant_id = extract_tenant_id(&headers)?;
 
     let txn = db::begin_tenant_txn(&state.db, tenant_id).await?;
