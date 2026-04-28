@@ -1,30 +1,30 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ovtl-postgres
+    container_name: ovlt-postgres
     environment:
-      POSTGRES_USER: ovtl
-      POSTGRES_PASSWORD: ovtl
-      POSTGRES_DB: ovtl
+      POSTGRES_USER: ovlt
+      POSTGRES_PASSWORD: ovlt
+      POSTGRES_DB: ovlt
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ovtl -d ovtl"]
+      test: ["CMD-SHELL", "pg_isready -U ovlt -d ovlt"]
       interval: 5s
       timeout: 3s
       retries: 5
     restart: unless-stopped
 
-  ovtl-core:
+  ovlt-core:
     build: .
-    image: ovtl
-    container_name: ovtl-core
+    image: ovlt
+    container_name: ovlt-core
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: "postgresql://ovtl:ovtl@postgres:5432/ovtl"
+      DATABASE_URL: "postgresql://ovlt:ovlt@postgres:5432/ovlt"
       JWT_SECRET: "change-me-in-dev-min-32-chars-jwt-secret-here"
       MASTER_ENCRYPTION_KEY: "change-me-in-dev-min-32-chars-master-key-here"
       TENANT_WRAP_KEY: "change-me-in-dev-min-32-chars-wrap-key-here!!"
@@ -32,18 +32,18 @@ services:
       SERVER_HOST: "0.0.0.0"
       SERVER_PORT: "3000"
       CORS_ALLOWED_ORIGINS: "*"
-      OVTL_ISSUER: "http://localhost:3000"
+      OVLT_ISSUER: "http://localhost:3000"
       # Admin key — protege POST/GET /tenants y /clients
-      OVTL_ADMIN_KEY: "dev-admin-key"
+      OVLT_ADMIN_KEY: "dev-admin-key"
       # Bootstrap — crea el tenant master + admin al primer arranque si no existen tenants
-      OVTL_BOOTSTRAP_TENANT_SLUG: "master"
-      OVTL_BOOTSTRAP_ADMIN_EMAIL: "admin@example.com"
-      OVTL_BOOTSTRAP_ADMIN_PASSWORD: "Admin1234!"
+      OVLT_BOOTSTRAP_TENANT_SLUG: "master"
+      OVLT_BOOTSTRAP_ADMIN_EMAIL: "admin@example.com"
+      OVLT_BOOTSTRAP_ADMIN_PASSWORD: "Admin1234!"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    command: ["./ovtl-core", "--migrate"]
+    command: ["./ovlt-core", "--migrate"]
 
 volumes:
   postgres_data:

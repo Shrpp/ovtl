@@ -4,11 +4,11 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
     ports: []
 
-  ovtl-core:
-    image: ghcr.io/ovtl/ovtl-core:latest
+  ovlt-core:
+    image: ghcr.io/ovlt/ovlt-core:latest
     environment:
       ENVIRONMENT: production
-      DATABASE_URL: "postgresql://ovtl:${POSTGRES_PASSWORD}@postgres:5432/ovtl?sslmode=prefer"
+      DATABASE_URL: "postgresql://ovlt:${POSTGRES_PASSWORD}@postgres:5432/ovlt?sslmode=prefer"
       JWT_SECRET: "${JWT_SECRET}"
       MASTER_ENCRYPTION_KEY: "${MASTER_ENCRYPTION_KEY}"
       TENANT_WRAP_KEY: "${TENANT_WRAP_KEY}"
@@ -17,4 +17,4 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    command: ["./ovtl-core", "--migrate"]
+    command: ["./ovlt-core", "--migrate"]

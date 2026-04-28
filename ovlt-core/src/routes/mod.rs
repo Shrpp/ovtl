@@ -1,0 +1,12 @@
+pub mod admin_identity_providers;
+pub mod audit_log;
+pub mod admin_permissions;
+pub mod admin_roles;
+pub mod admin_sessions;
+pub mod admin_users;
+pub mod auth;
+pub mod clients;
+pub mod oauth_as;
+pub mod settings;
+pub mod tenants;
+pub mod user;

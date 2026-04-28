@@ -3,6 +3,6 @@ target/
 .env
 .env.*
 .claude/
-ovtl-core/.env
-ovtl-core/.env.*
-ovtl-core/migration/.env
+ovlt-core/.env
+ovlt-core/.env.*
+ovlt-core/migration/.env

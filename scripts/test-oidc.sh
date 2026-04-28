@@ -2,14 +2,14 @@
 # Full OIDC Authorization Code + PKCE flow.
 # Requires: curl, jq, openssl
 # Usage: bash scripts/test-oidc.sh
-#        OVTL_URL=http://... OVTL_ADMIN_KEY=... bash scripts/test-oidc.sh
+#        OVLT_URL=http://... OVLT_ADMIN_KEY=... bash scripts/test-oidc.sh
 
 set -euo pipefail
 
-BASE="${OVTL_URL:-http://localhost:3000}"
-ADMIN_KEY="${OVTL_ADMIN_KEY:-dev-admin-key}"
-EMAIL="${OVTL_ADMIN_EMAIL:-admin@example.com}"
-PASSWORD="${OVTL_ADMIN_PASSWORD:-Admin1234!}"
+BASE="${OVLT_URL:-http://localhost:3000}"
+ADMIN_KEY="${OVLT_ADMIN_KEY:-dev-admin-key}"
+EMAIL="${OVLT_ADMIN_EMAIL:-admin@example.com}"
+PASSWORD="${OVLT_ADMIN_PASSWORD:-Admin1234!}"
 REDIRECT_URI="http://localhost:8080/callback"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -42,7 +42,7 @@ ok "Server is up"
 
 # ── 1. Get tenant ID ──────────────────────────────────────────────────────────
 step "Fetching tenant list"
-TENANTS=$(curl -sf "$BASE/tenants" -H "x-ovtl-admin-key: $ADMIN_KEY")
+TENANTS=$(curl -sf "$BASE/tenants" -H "x-ovlt-admin-key: $ADMIN_KEY")
 TENANT_ID=$(echo "$TENANTS" | jq -r '.[0].id')
 TENANT_SLUG=$(echo "$TENANTS" | jq -r '.[0].slug')
 [[ "$TENANT_ID" != "null" && -n "$TENANT_ID" ]] || fail "No tenants found. Did bootstrap run?"
@@ -51,8 +51,8 @@ ok "Tenant: $TENANT_SLUG ($TENANT_ID)"
 # ── 2. Create OAuth client ────────────────────────────────────────────────────
 step "Creating OAuth client"
 R=$(curl_with_status -X POST "$BASE/clients" \
-  -H "x-ovtl-admin-key: $ADMIN_KEY" \
-  -H "x-ovtl-tenant-id: $TENANT_ID" \
+  -H "x-ovlt-admin-key: $ADMIN_KEY" \
+  -H "x-ovlt-tenant-id: $TENANT_ID" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\": \"test-oidc-$(date +%s)\",
@@ -68,7 +68,7 @@ echo "   client_secret: $CLIENT_SECRET"
 # ── 3. Login ──────────────────────────────────────────────────────────────────
 step "Logging in as $EMAIL (tenant: $TENANT_SLUG)"
 R=$(curl_with_status -X POST "$BASE/auth/login" \
-  -H "x-ovtl-tenant-slug: $TENANT_SLUG" \
+  -H "x-ovlt-tenant-slug: $TENANT_SLUG" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
 [[ "$(status "$R")" == "200" ]] || fail "Login failed (HTTP $(status "$R")): $(body "$R")
@@ -121,7 +121,7 @@ ok "scope:        $SCOPE"
 # ── 7. Introspect ─────────────────────────────────────────────────────────────
 step "Introspecting access token"
 R=$(curl_with_status -X POST "$BASE/oauth/introspect" \
-  -H "x-ovtl-admin-key: $ADMIN_KEY" \
+  -H "x-ovlt-admin-key: $ADMIN_KEY" \
   --data-urlencode "token=$ACCESS_TOKEN_OIDC")
 ACTIVE=$(body "$R" | jq -r '.active')
 [[ "$ACTIVE" == "true" ]] || fail "Token not active: $(body "$R")"

@@ -1,4 +1,4 @@
-# OVTL
+# OVLT
 
 Self-hosted authentication platform. Drop-in Keycloak alternative — OIDC Authorization Server, multi-tenant, zero-knowledge encrypted, ~20 MB RAM.
 
@@ -19,8 +19,8 @@ Self-hosted authentication platform. Drop-in Keycloak alternative — OIDC Autho
 
 ```bash
 git clone <repo-url>
-cd ovtl
-cp ovtl-core/.env.example ovtl-core/.env  # fill in secrets
+cd ovlt
+cp ovlt-core/.env.example ovlt-core/.env  # fill in secrets
 
 docker compose up
 ```
@@ -31,12 +31,12 @@ docker compose up
 
 ```bash
 git clone <repo-url>
-cd ovtl
-cp ovtl-core/.env.example ovtl-core/.env  # fill in secrets
+cd ovlt
+cp ovlt-core/.env.example ovlt-core/.env  # fill in secrets
 
 docker compose up -d postgres
 
-cd ovtl-core
+cd ovlt-core
 cargo run -- --migrate  # runs migrations then starts server
 ```
 
@@ -55,8 +55,8 @@ cargo run -- --migrate  # runs migrations then starts server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OVTL_ISSUER` | `http://localhost:3000` | Issuer URL used in OIDC discovery and id_token |
-| `OVTL_ADMIN_KEY` | — | Secret for admin endpoints (`X-OVTL-Admin-Key` header). Required to use `/tenants` and `/oauth/introspect` |
+| `OVLT_ISSUER` | `http://localhost:3000` | Issuer URL used in OIDC discovery and id_token |
+| `OVLT_ADMIN_KEY` | — | Secret for admin endpoints (`X-OVLT-Admin-Key` header). Required to use `/tenants` and `/oauth/introspect` |
 | `RSA_PRIVATE_KEY` | — | Base64-encoded PKCS8 PEM for RS256. Generated ephemerally if not set (keys lost on restart) |
 | `BOOTSTRAP_ADMIN_EMAIL` | — | Auto-create master tenant admin on first boot |
 | `BOOTSTRAP_ADMIN_PASSWORD` | — | Password for bootstrap admin |
@@ -82,9 +82,9 @@ cargo run -- --migrate  # runs migrations then starts server
 | `GET` | `/.well-known/jwks.json` | RS256 public key set |
 | `GET` | `/oauth/authorize` | Authorization Code + PKCE flow |
 | `POST` | `/oauth/token` | Exchange code for tokens |
-| `POST` | `/oauth/introspect` | Token introspection (requires `X-OVTL-Admin-Key`) |
+| `POST` | `/oauth/introspect` | Token introspection (requires `X-OVLT-Admin-Key`) |
 
-### Auth (requires `x-ovtl-tenant-id` header)
+### Auth (requires `x-ovlt-tenant-id` header)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -102,7 +102,7 @@ cargo run -- --migrate  # runs migrations then starts server
 |--------|------|------|-------------|
 | `GET` | `/users/me` | JWT | Authenticated user profile |
 
-### Admin (requires `X-OVTL-Admin-Key` header)
+### Admin (requires `X-OVLT-Admin-Key` header)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -125,7 +125,7 @@ cargo run -- --migrate  # runs migrations then starts server
 ```bash
 curl -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
-  -H "x-ovtl-tenant-id: <tenant-uuid>" \
+  -H "x-ovlt-tenant-id: <tenant-uuid>" \
   -d '{"email": "user@example.com", "password": "SecurePass1"}'
 ```
 
@@ -134,7 +134,7 @@ curl -X POST http://localhost:3000/auth/register \
 ```bash
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
-  -H "x-ovtl-tenant-id: <tenant-uuid>" \
+  -H "x-ovlt-tenant-id: <tenant-uuid>" \
   -d '{"email": "user@example.com", "password": "SecurePass1"}'
 ```
 
@@ -154,7 +154,7 @@ curl http://localhost:3000/.well-known/openid-configuration
 
 # 2. Register an OAuth2 client
 curl -X POST http://localhost:3000/clients \
-  -H "X-OVTL-Admin-Key: <admin-key>" \
+  -H "X-OVLT-Admin-Key: <admin-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My App",
@@ -171,7 +171,7 @@ curl -X POST http://localhost:3000/clients \
 
 ```bash
 curl -X POST http://localhost:3000/tenants \
-  -H "X-OVTL-Admin-Key: <admin-key>" \
+  -H "X-OVLT-Admin-Key: <admin-key>" \
   -H "Content-Type: application/json" \
   -d '{"name": "Acme Corp", "slug": "acme"}'
 ```
@@ -179,8 +179,8 @@ curl -X POST http://localhost:3000/tenants \
 ## Architecture
 
 ```
-ovtl/
-├── ovtl-core/              # Main server (Axum + SeaORM)
+ovlt/
+├── ovlt-core/              # Main server (Axum + SeaORM)
 │   ├── src/
 │   │   ├── handlers/       # HTTP request handlers
 │   │   ├── middleware/     # Auth, tenant, security, rate limiting
@@ -196,7 +196,7 @@ ovtl/
 └── docker-compose.prod.yml # Production stack (read-only fs, no exposed DB port)
 ```
 
-**Multi-tenancy:** Every request carries `x-ovtl-tenant-id`. The tenant middleware decrypts the per-tenant key, stored double-envelope encrypted (`TENANT_WRAP_KEY` wraps the key, `MASTER_ENCRYPTION_KEY` wraps the wrap). PostgreSQL RLS enforces row-level isolation via `SET LOCAL app.tenant_id`.
+**Multi-tenancy:** Every request carries `x-ovlt-tenant-id`. The tenant middleware decrypts the per-tenant key, stored double-envelope encrypted (`TENANT_WRAP_KEY` wraps the key, `MASTER_ENCRYPTION_KEY` wraps the wrap). PostgreSQL RLS enforces row-level isolation via `SET LOCAL app.tenant_id`.
 
 **Encryption:** User emails are AES-256-GCM encrypted at rest. A keyed SHA-256 hash (`email_lookup`) enables lookups without decrypting every row — the lookup key never leaves the server.
 
@@ -215,7 +215,7 @@ ovtl/
 
 ```bash
 docker compose up -d postgres
-cd ovtl-core
+cd ovlt-core
 cargo run -- --migrate
 cargo test
 ```

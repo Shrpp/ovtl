@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "ovtl-core",
-    "ovtl-core/migration",
-    "ovtl-cli",
+    "ovlt-core",
+    "ovlt-core/migration",
+    "ovlt-cli",
 ]
 resolver = "2"

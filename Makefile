@@ -2,7 +2,7 @@
 
 help:
 	@echo ""
-	@echo "  make dev        — build and start postgres + ovtl-core (Docker)"
+	@echo "  make dev        — build and start postgres + ovlt-core (Docker)"
 	@echo "  make down       — stop and remove containers"
 	@echo "  make logs       — tail server logs"
 	@echo "  make migrate    — run pending migrations (server must be stopped)"
@@ -17,13 +17,15 @@ down:
 	docker compose down
 
 logs:
-	docker compose logs -f ovtl-core
+	docker compose logs -f ovlt-core
 
 migrate:
-	docker compose run --rm ovtl-core ./ovtl-core --migrate
+	docker compose run --rm ovlt-core ./ovlt-core --migrate
 
 cli:
-	cargo run -p ovtl-cli
+	@command -v cargo >/dev/null || { echo "cargo not found"; exit 1; }
+	cargo run -p ovlt-cli -- \
+		--url $${OVLT_URL:-http://localhost:3000}
 
 test-oidc:
 	@bash scripts/test-oidc.sh

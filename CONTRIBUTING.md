@@ -1,6 +1,6 @@
-# Contributing to OVTL
+# Contributing to OVLT
 
-Thanks for your interest. OVTL is licensed under the [Elastic License 2.0](LICENSE) — you can use, modify, and contribute freely; you cannot resell it or offer it as a managed service.
+Thanks for your interest. OVLT is licensed under the [Elastic License 2.0](LICENSE) — you can use, modify, and contribute freely; you cannot resell it or offer it as a managed service.
 
 ## How to contribute
 
@@ -12,12 +12,12 @@ Thanks for your interest. OVTL is licensed under the [Elastic License 2.0](LICEN
 
 ```bash
 git clone <repo-url>
-cd ovtl
-cp ovtl-core/.env.example ovtl-core/.env
+cd ovlt
+cp ovlt-core/.env.example ovlt-core/.env
 
 docker compose up -d postgres
 
-cd ovtl-core
+cd ovlt-core
 cargo run -- --migrate
 ```
 
@@ -43,7 +43,7 @@ cargo clippy -- -D warnings
 
 ## Database migrations
 
-Migrations live in `ovtl-core/migration/src/`. Every migration must implement both `up` and `down`. Test both directions before opening a PR.
+Migrations live in `ovlt-core/migration/src/`. Every migration must implement both `up` and `down`. Test both directions before opening a PR.
 
 ## Security issues
 
