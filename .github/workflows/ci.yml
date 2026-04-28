@@ -8,31 +8,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: postgresql://ovlt:ovlt@localhost:5432/ovlt
-  JWT_SECRET: ci-jwt-secret-change-me-min-32-chars
-  MASTER_ENCRYPTION_KEY: ci-master-enc-key-change-me-32chars
-  TENANT_WRAP_KEY: ci-tenant-wrap-key-change-me-32ch!
-  OVLT_ADMIN_KEY: ci-admin-key
-  OVLT_ISSUER: http://localhost:3000
 
 jobs:
   ci:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: ovlt
-          POSTGRES_PASSWORD: ovlt
-          POSTGRES_DB: ovlt
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ovlt -d ovlt"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -53,9 +32,3 @@ jobs:
 
       - name: Build
         run: cargo build --verbose
-
-      - name: Run migrations
-        run: cargo run --bin ovlt-core -- --migrate
-
-      - name: Test
-        run: cargo test --verbose

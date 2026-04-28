@@ -1961,7 +1961,7 @@ dependencies = [
 
 [[package]]
 name = "migration"
-version = "0.1.0"
+version = "0.1.0-alpha"
 dependencies = [
  "sea-orm-migration",
  "tokio",
@@ -2311,7 +2311,7 @@ dependencies = [
 
 [[package]]
 name = "ovlt-cli"
-version = "0.1.0"
+version = "0.1.0-alpha"
 dependencies = [
  "arboard",
  "clap",
@@ -2329,7 +2329,7 @@ dependencies = [
 
 [[package]]
 name = "ovlt-core"
-version = "0.2.0"
+version = "0.1.0-alpha"
 dependencies = [
  "axum",
  "base32",
